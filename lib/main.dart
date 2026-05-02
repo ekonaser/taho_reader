@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -175,6 +174,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       final available = await _tahoReader.init();
       if (!available) throw 'USB reader not available';
+      await _tahoReader.getATR(); // To bo zdaj sprožilo powerOnCard v Kotlinu
 
       final connected = await _tahoReader.isConnected();
       if (!connected) throw 'USB reader is not connected';
@@ -182,46 +182,50 @@ class _TahoDashboardState extends State<TahoDashboard> {
       final cardPresent = await _tahoReader.isCardPresent();
       if (!cardPresent) throw 'No card detected';
 
+      // Reset data
+      setState(() {
+        cardId = null;
+        vehicles = [];
+        activities = [];
+        violations = [];
+        gnssRecords = [];
+      });
+
+      // 1. Always try to read Gen 1 data (the main data we parse)
       try {
-        // Try reading as Gen 2 first (SMRDT)
-        gen2Card = await _readGen2Card();
+        gen1Card = await _readGen1Card();
+        final parser = TahoParser();
         
-        final parsedCardId = await compute((Uint8List data) => TahoParser().parseCardId(data), gen2Card!.idData);
-        //final parsedVehicles = await compute((Uint8List data) => TahoParser().parseVehicles(data), gen2Card!.vehiclesDATAptr);
-        final parsedActivities = await compute((Uint8List data) => TahoParser().parseActivities(data), gen2Card!.activitiesDATAptr);
-        final parsedViolations = await compute((List<DailyActivities> acts) => TahoParser().findViolations(acts), parsedActivities);
-        final parsedGnss = await compute((Uint8List data) => TahoParser().parseGnss(data), gen2Card!.GNSS);
+        final parsedCardId = parser.parseCardId(gen1Card!.idData);
+        final parsedVehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
+        final parsedActivities = parser.parseActivities(gen1Card!.activitiesDATAptr);
+        final parsedViolations = parser.findViolations(parsedActivities);
 
         setState(() {
           cardId = parsedCardId;
-          //vehicles = parsedVehicles;
+          vehicles = parsedVehicles;
           activities = parsedActivities;
           violations = parsedViolations;
+        });
+      } catch (e) {
+        developer.log("Error reading Gen 1: $e");
+      }
+
+      // 2. Always try to read Gen 2 GNSS data
+      try {
+        gen2Card = await _readGen2Card();
+        final parsedGnss = TahoParser().parseGnss(gen2Card!.GNSS);
+        setState(() {
           gnssRecords = parsedGnss;
         });
       } catch (e) {
-        developer.log("Not a Gen 2 card or error reading Gen 2: $e");
-        // Fallback to Gen 1
-        try {
-          gen1Card = await _readGen1Card();
-          
-          final parsedCardId = await compute((Uint8List data) => TahoParser().parseCardId(data), gen1Card!.idData);
-          final parsedVehicles = await compute((Uint8List data) => TahoParser().parseVehicles(data), gen1Card!.vehiclesDATAptr);
-          final parsedActivities = await compute((Uint8List data) => TahoParser().parseActivities(data), gen1Card!.activitiesDATAptr);
-          final parsedViolations = await compute((List<DailyActivities> acts) => TahoParser().findViolations(acts), parsedActivities);
-
-          setState(() {
-            cardId = parsedCardId;
-            vehicles = parsedVehicles;
-            activities = parsedActivities;
-            violations = parsedViolations;
-            gnssRecords = [];
-          });
-        } catch (e2) {
-           developer.log("Error reading Gen 1: $e2");
-           throw "Failed to read card as Gen 1 or Gen 2";
-        }
+        developer.log("Not a Gen 2 card or error reading Gen 2 GNSS: $e");
       }
+
+      if (cardId == null && gnssRecords.isEmpty) {
+        throw "Failed to read any valid data from card";
+      }
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -238,7 +242,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
     final cardCert = await _tahoReader.readData(194);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
     final caCert = await _tahoReader.readData(194);
 
@@ -297,80 +301,30 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Future<TahoGen2Card> _readGen2Card() async {
+    // Select SMRDT DF
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x53, 0x4D, 0x52, 0x44, 0x54]));
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
-    final appId = await _tahoReader.readData(15);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
-    final cardCert = await _tahoReader.readData(205);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x01]));
-    final cardSignCert = await _tahoReader.readData(205);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
-    final caCert = await _tahoReader.readData(205);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x09]));
-    final linkCert = await _tahoReader.readData(205);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
-    final idData = await _tahoReader.readData(143);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
-    final download = await _tahoReader.readData(4);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
-    final license = await _tahoReader.readData(53);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
-    final events = await _tahoReader.readData(3168);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
-    final faults = await _tahoReader.readData(1152);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
-    final activities = await _tahoReader.readData(13780);
-
-    //await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
-    //final vehicles = await _tahoReader.readData(9602);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
-    final places = await _tahoReader.readData(2354);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
-    final usage = await _tahoReader.readData(19);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
-    final control = await _tahoReader.readData(46);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
-    final conditions = await _tahoReader.readData(562);
-
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x23]));
-    final vuUsed = await _tahoReader.readData(2002);
-
+    // Read ONLY GNSS (0x0524) for coordinates
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x24]));
     final gnssData = await _tahoReader.readData(5042);
 
     return TahoGen2Card(
-      appIdentification: appId,
-      cardCertDATAptr: cardCert,
-      cardSignCertificate: cardSignCert,
-      CACertDATAptr: caCert,
-      linkCertificate: linkCert,
-      idData: idData,
-      cardDownload: download,
-      driverLicenseDATAptr: license,
-      eventsData: events,
-      faultsData: faults,
-      activitiesDATAptr: activities,
-      //vehiclesDATAptr: vehicles,
-      places: places,
-      currentUsage: usage,
-      controlActivityData: control,
-      specificConditions: conditions,
-      vehicleUnitsUsed: vuUsed,
+      appIdentification: Uint8List(0),
+      cardCertDATAptr: Uint8List(0),
+      cardSignCertificate: Uint8List(0),
+      CACertDATAptr: Uint8List(0),
+      linkCertificate: Uint8List(0),
+      idData: Uint8List(0),
+      cardDownload: Uint8List(0),
+      driverLicenseDATAptr: Uint8List(0),
+      eventsData: Uint8List(0),
+      faultsData: Uint8List(0),
+      activitiesDATAptr: Uint8List(0),
+      places: Uint8List(0),
+      currentUsage: Uint8List(0),
+      controlActivityData: Uint8List(0),
+      specificConditions: Uint8List(0),
+      vehicleUnitsUsed: Uint8List(0),
       GNSS: gnssData,
     );
   }

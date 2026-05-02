@@ -323,7 +323,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             left: left + 2,
             bottom: 8,
             child: Text(
-              "${m.toString().padLeft(2, '0')}",
+              m.toString().padLeft(2, '0'),
               style: TextStyle(
                 fontSize: 8,
                 color: Colors.grey.withOpacity(0.5),
