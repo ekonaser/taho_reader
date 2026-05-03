@@ -277,3 +277,13 @@ class Violation {
 
   Violation({required this.time, required this.type, required this.description});
 }
+
+class ParsedTachoData {
+  final CardId cardId;
+  final List<DailyActivities> activities;
+
+  ParsedTachoData({
+    required this.cardId,
+    required this.activities,
+  });
+}

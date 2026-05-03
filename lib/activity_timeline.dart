@@ -5,13 +5,11 @@ import 'dart:math';
 class ActivityTimeline extends StatefulWidget {
   final List<DailyActivities> activities;
   final VoidCallback? onDateTap;
-  final int utcOffset;
 
   const ActivityTimeline({
     super.key,
     required this.activities,
     this.onDateTap,
-    this.utcOffset = 0,
   });
 
   @override
@@ -206,7 +204,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // --- HEADER ---
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
-      double activityTime = (firstAct.time + widget.utcOffset) / 60.0;
+      double activityTime = firstAct.time / 60.0;
       double prevTime = activityTime;
 
       // MoveToEx / LineTo (Začetna črta seje)
@@ -218,7 +216,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // --- WHILE (counter > 0) ---
       while (internalCounter > 0 && ptr < day.activities.length) {
         final currentAct = day.activities[ptr];
-        activityTime = (currentAct.time + widget.utcOffset) / 60.0;
+        activityTime = currentAct.time / 60.0;
         double duration = activityTime - prevTime;
 
         // switch (activityType) { ... FillRect ... }

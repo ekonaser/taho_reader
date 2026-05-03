@@ -163,6 +163,18 @@ class TahoParser {
     return result.values.toList();
   }
 
+  List<Violation> findViolations(List<DailyActivities> activities) {
+    List<Violation> violations = [];
+    for (var day in activities) {
+      // Simplified example check: more than 4.5 hours of continuous driving
+      // For this we'd need to calculate durations between activity records.
+      // This is a placeholder for the logic.
+    }
+    return violations;
+  }
+}
+
+class TahoParserG2 extends TahoParser {
   List<GnssRecord> parseGnss(Uint8List section) {
     if (section.length < 18) return [];
     final List<GnssRecord> records = [];
@@ -184,13 +196,16 @@ class TahoParser {
     return records;
   }
 
-  List<Violation> findViolations(List<DailyActivities> activities) {
-    List<Violation> violations = [];
-    for (var day in activities) {
-      // Simplified example check: more than 4.5 hours of continuous driving
-      // For this we'd need to calculate durations between activity records.
-      // This is a placeholder for the logic.
-    }
-    return violations;
+  ParsedTachoData parseAll(
+    Uint8List cardSection,
+    Uint8List activitySection,
+  ) {
+    final card = parseCardId(cardSection);
+    final activities = parseActivities(activitySection);
+
+    return ParsedTachoData(
+      cardId: card,
+      activities: activities,
+    );
   }
 }

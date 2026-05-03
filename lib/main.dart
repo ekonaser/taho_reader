@@ -60,7 +60,6 @@ class _TahoDashboardState extends State<TahoDashboard> {
   DateTime? _selectedActivityDate;
   bool isLoading = false;
   int _selectedTabIndex = 0;
-  int utcOffset = 0; // UTC offset v minutah (npr. 60 za UTC+1)
 
   final TahoReader _tahoReader = TahoReader();
   static const primaryGreen = Color(0xFF28B52F);
@@ -131,6 +130,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       final ef = _extractEFSections(bytes);
       final parser = TahoParser();
+      final parserG2 = TahoParserG2();
 
       if (ef.containsKey('id')) {
         setState(() {
@@ -152,7 +152,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       if (ef.containsKey('gnss')) {
         setState(() {
-          gnssRecords = parser.parseGnss(ef['gnss']!);
+          gnssRecords = parserG2.parseGnss(ef['gnss']!);
         });
       }
 
@@ -214,7 +214,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       // 2. Always try to read Gen 2 GNSS data
       try {
         gen2Card = await _readGen2Card();
-        final parsedGnss = TahoParser().parseGnss(gen2Card!.GNSS);
+        final parsedGnss = TahoParserG2().parseGnss(gen2Card!.GNSS);
         setState(() {
           gnssRecords = parsedGnss;
         });
@@ -359,13 +359,10 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Future<void> _showSettings() async {
-    final int? result = await Navigator.push<int>(
+    await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => SettingsScreen(currentUtcOffset: utcOffset)),
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
     );
-    if (result != null) {
-      setState(() => utcOffset = result);
-    }
   }
 
   @override
@@ -595,30 +592,15 @@ class _TahoDashboardState extends State<TahoDashboard> {
 }
 
 class SettingsScreen extends StatelessWidget {
-  final int currentUtcOffset;
-  const SettingsScreen({super.key, required this.currentUtcOffset});
+  const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF28B52F);
-    final List<Map<String, dynamic>> options = [
-      {'label': 'UTC +0 (London)', 'value': 0},
-      {'label': 'UTC +1 (Ljubljana/Berlin)', 'value': 60},
-      {'label': 'UTC +2 (Athens/Kiev)', 'value': 120},
-      {'label': 'UTC +3 (Istanbul)', 'value': 180},
-    ];
-
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
       body: ListView(
-        children: [
-          const Padding(padding: EdgeInsets.all(16), child: Text("Time Zone (UTC Offset)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-          ...options.map((opt) => RadioListTile<int>(
-            title: Text(opt['label']), value: opt['value'], groupValue: currentUtcOffset,
-            activeColor: primaryGreen, onChanged: (val) => Navigator.pop(context, val),
-          )),
-          const Divider(),
-          const ListTile(title: Text("Version"), trailing: Text("1.0.0")),
+        children: const [
+          ListTile(title: Text("Version"), trailing: Text("1.0.0")),
         ],
       ),
     );
