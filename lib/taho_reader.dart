@@ -39,14 +39,6 @@ class TahoReader {
     return _invokeBytes('readData', {'length': length});
   }
 
-  Future<List<String>> getLogs() async {
-    final result = await _channel.invokeMethod('getLogs');
-    if (result is List) {
-      return result.map((item) => item.toString()).toList();
-    }
-    return [];
-  }
-
   Future<Uint8List?> getATR() async {
     final result = await _channel.invokeMethod('getATR');
     if (result is Uint8List) return result;

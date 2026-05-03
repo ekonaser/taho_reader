@@ -9,6 +9,7 @@ import 'taho_parser.dart';
 import 'taho_reader.dart';
 import 'openstreetmap.dart';
 import 'activity_timeline.dart';
+import 'taho_exporter.dart';
 
 void main() {
   runApp(const TahoApp());
@@ -51,6 +52,8 @@ class TahoDashboard extends StatefulWidget {
 
 class _TahoDashboardState extends State<TahoDashboard> {
   CardId? cardId;
+  DriverLicense? driverLicense;
+  LastDownload? lastDownload;
   List<DailyVehicles> vehicles = [];
   List<GnssRecord> gnssRecords = [];
   List<DailyActivities> activities = [];
@@ -60,6 +63,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
   DateTime? _selectedActivityDate;
   bool isLoading = false;
   int _selectedTabIndex = 0;
+  int _utcOffset = 0;
 
   final TahoReader _tahoReader = TahoReader();
   static const primaryGreen = Color(0xFF28B52F);
@@ -101,6 +105,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
         findSection(0x05, 0x20, 0x02, 0x00, 0x8F);
     if (id != null) out['id'] = id;
 
+    // Last Download (05 0E) - 4 bajti (00 04)
+    final lastDl = findSection(0x05, 0x0E, 0x00, 0x00, 0x04) ??
+        findSection(0x05, 0x0E, 0x02, 0x00, 0x04);
+    if (lastDl != null) out['lastDl'] = lastDl;
+
     // Vehicles (05 05) - Gen1: 6202 (18 3A), Gen2: 9602 (25 82)
     final veh = findSection(0x05, 0x05, 0x00, 0x18, 0x3A) ??
         findSection(0x05, 0x05, 0x02, 0x25, 0x82);
@@ -110,6 +119,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
     final act = findSection(0x05, 0x04, 0x00, 0x35, 0xD4) ??
         findSection(0x05, 0x04, 0x02, 0x35, 0xD4);
     if (act != null) out['act'] = act;
+
+    // Driver License (05 21) - 53 bajtov (00 35)
+    final license = findSection(0x05, 0x21, 0x00, 0x00, 0x35) ??
+        findSection(0x05, 0x21, 0x02, 0x00, 0x35);
+    if (license != null) out['license'] = license;
 
     // GNSS (05 24) - 5042 bajtov (13 B2)
     final gnss = findSection(0x05, 0x24, 0x02, 0x13, 0xB2);
@@ -135,6 +149,18 @@ class _TahoDashboardState extends State<TahoDashboard> {
       if (ef.containsKey('id')) {
         setState(() {
           cardId = parser.parseCardId(ef['id']!);
+        });
+      }
+
+      if (ef.containsKey('license')) {
+        setState(() {
+          driverLicense = parser.parseDriverLicense(ef['license']!);
+        });
+      }
+
+      if (ef.containsKey('lastDl')) {
+        setState(() {
+          lastDownload = parser.parseLastDownload(ef['lastDl']!);
         });
       }
 
@@ -167,73 +193,125 @@ class _TahoDashboardState extends State<TahoDashboard> {
     }
   }
 
-  Future<void> _readTachoCard() async {
+  Future<void> _showReadCardOptions() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Select Card Generation",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryGreen),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  title: const Text("Gen 1", textAlign: TextAlign.center),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _readTachoCard(version: 1);
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text("Gen 2", textAlign: TextAlign.center),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _readTachoCard(version: 2);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _readTachoCard({int version = 2}) async {
     try {
       if (!mounted) return;
       setState(() => isLoading = true);
 
-      final available = await _tahoReader.init();
-      if (!available) throw 'USB reader not available';
-      await _tahoReader.getATR(); // To bo zdaj sprožilo powerOnCard v Kotlinu
+      // --- 1. Priprava in preverjanje naprave ---
+      if (!await _tahoReader.init()) throw 'USB čitalnik ni na voljo';
+      await _tahoReader.getATR(); 
+      if (!await _tahoReader.isConnected()) throw 'Čitalnik ni povezan';
+      if (!await _tahoReader.isCardPresent()) throw 'Kartica ni zaznana';
 
-      final connected = await _tahoReader.isConnected();
-      if (!connected) throw 'USB reader is not connected';
-
-      final cardPresent = await _tahoReader.isCardPresent();
-      if (!cardPresent) throw 'No card detected';
-
-      // Reset data
+      // --- 2. Ponastavitev podatkovnega stanja ---
       setState(() {
         cardId = null;
+        driverLicense = null;
         vehicles = [];
         activities = [];
         violations = [];
         gnssRecords = [];
+        gen1Card = null;
+        gen2Card = null;
       });
 
-      // 1. Always try to read Gen 1 data (the main data we parse)
-      try {
-        gen1Card = await _readGen1Card();
-        final parser = TahoParser();
-        
-        final parsedCardId = parser.parseCardId(gen1Card!.idData);
-        final parsedVehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
-        final parsedActivities = parser.parseActivities(gen1Card!.activitiesDATAptr);
-        final parsedViolations = parser.findViolations(parsedActivities);
-
-        setState(() {
-          cardId = parsedCardId;
-          vehicles = parsedVehicles;
-          activities = parsedActivities;
-          violations = parsedViolations;
-        });
-      } catch (e) {
-        developer.log("Error reading Gen 1: $e");
+      // --- 3. Branje po generacijah ---
+      if (version == 1) {
+        await _processGen1Reading();
+      } else if (version == 2) {
+        await _processGen2Reading();
       }
 
-      // 2. Always try to read Gen 2 GNSS data
-      try {
-        gen2Card = await _readGen2Card();
-        final parsedGnss = TahoParserG2().parseGnss(gen2Card!.GNSS);
-        setState(() {
-          gnssRecords = parsedGnss;
-        });
-      } catch (e) {
-        developer.log("Not a Gen 2 card or error reading Gen 2 GNSS: $e");
-      }
-
+      // --- 4. Končna validacija ---
       if (cardId == null && gnssRecords.isEmpty) {
-        throw "Failed to read any valid data from card";
+        throw "Branje ni vrnilo veljavnih podatkov.";
       }
 
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text('Napaka: $e'), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _processGen1Reading() async {
+    try {
+      final data = await _readGen1Card();
+      final parser = TahoParser();
+      setState(() {
+        gen1Card = data;
+        cardId = parser.parseCardId(data.idData);
+        driverLicense = parser.parseDriverLicense(data.driverLicenseDATAptr);
+        lastDownload = parser.parseLastDownload(data.cardDownload);
+        vehicles = parser.parseVehicles(data.vehiclesDATAptr);
+        activities = parser.parseActivities(data.activitiesDATAptr);
+        violations = [];
+      });
+    } catch (e) {
+      developer.log("Opozorilo Gen 1: $e");
+    }
+  }
+
+  Future<void> _processGen2Reading() async {
+    try {
+      final data = await _readGen2Card();
+      final parser = TahoParser();
+      final parserG2 = TahoParserG2();
+      setState(() {
+        gen2Card = data;
+        cardId = parser.parseCardId(data.idData);
+        lastDownload = parser.parseLastDownload(data.cardDownload);
+        gnssRecords = parserG2.parseGnss(data.GNSS);
+      });
+    } catch (e) {
+      developer.log("Opozorilo Gen 2: $e");
     }
   }
 
@@ -361,7 +439,23 @@ class _TahoDashboardState extends State<TahoDashboard> {
   Future<void> _showSettings() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+      MaterialPageRoute(
+        builder: (context) => const SettingsScreen(),
+      ),
+    );
+  }
+
+  void _saveToDdd() {
+    if (cardId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No card data to save. Please read a card first.')),
+      );
+      return;
+    }
+    TahoExporter().saveToDdd(
+      gen1Card: gen1Card,
+      gen2Card: gen2Card,
+      fileName: '${cardId!.name}_${cardId!.surname}'.replaceAll(' ', '_'),
     );
   }
 
@@ -395,8 +489,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           title: Text(_getTabTitle()),
           actions: [
             IconButton(icon: const Icon(Icons.file_open), onPressed: _pickAndParseFile),
-            IconButton(icon: const Icon(Icons.list_alt), onPressed: _showLogs),
-            IconButton(icon: const Icon(Icons.usb), onPressed: _readTachoCard),
+            IconButton(icon: const Icon(Icons.save), onPressed: _saveToDdd),
+            IconButton(icon: const Icon(Icons.usb), onPressed: _showReadCardOptions),
             IconButton(icon: const Icon(Icons.settings), onPressed: _showSettings),
           ],
         ),
@@ -414,7 +508,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: 'Vehicles'),
             BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'Activity'),
-            BottomNavigationBarItem(icon: Icon(Icons.warning_amber), label: 'Foul'),
+            BottomNavigationBarItem(icon: Icon(Icons.warning_amber), label: 'Violations'),
             BottomNavigationBarItem(icon: Icon(Icons.map), label: 'GNSS'),
           ],
         ),
@@ -444,7 +538,12 @@ class _TahoDashboardState extends State<TahoDashboard> {
         a.date.year == _selectedActivityDate!.year &&
             a.date.month == _selectedActivityDate!.month &&
             a.date.day == _selectedActivityDate!.day).toList();
-        return ActivityTimeline(activities: filtered, onDateTap: _selectActivityDate);
+        return ActivityTimeline(
+          activities: filtered,
+          onDateTap: _selectActivityDate,
+          utcOffset: _utcOffset,
+          onUtcOffsetChanged: (newOffset) => setState(() => _utcOffset = newOffset),
+        );
       case 3: return _buildViolationsTab();
       case 4: return OpenStreetMapScreen(records: gnssRecords);
       default: return const SizedBox();
@@ -489,7 +588,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: _readTachoCard,
+              onPressed: _showReadCardOptions,
               icon: const Icon(Icons.usb),
               label: const Text('READ TAHO CARD'),
               style: ElevatedButton.styleFrom(
@@ -532,9 +631,10 @@ class _TahoDashboardState extends State<TahoDashboard> {
           _idRow(Icons.cake, 'Birthday', id.formattedBirthday),
           _idRow(Icons.calendar_today, 'Issue Date', id.startDate.toLocal().toString().split(' ').first),
           _idRow(Icons.calendar_today, 'Expiry Date', id.expiryDate.toLocal().toString().split(' ').first),
-          _idRow(Icons.badge, 'Driver License', '0'),
+          _idRow(Icons.badge, 'Driver License', driverLicense?.licenseNumber ?? "/"),
           _idRow(Icons.public, 'Country', id.country),
           _idRow(Icons.business, 'Issuer', id.issuer),
+          _idRow(Icons.history, 'Last Download', lastDownload?.formattedDate ?? '/'),
         ],
       ),
     );
@@ -564,27 +664,17 @@ class _TahoDashboardState extends State<TahoDashboard> {
       elevation: 2, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: Colors.white,
-      child: ExpansionTile(
-        title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
-        leading: const Icon(Icons.calendar_month, color: primaryGreen),
-        children: day.vehicles.map((v) => ListTile(
-          dense: true, title: Text(v.registration), subtitle: Text("${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}"),
-          trailing: Text("${v.endKm - v.startKm} km"),
-        )).toList(),
-      ),
-    );
-  }
-
-  Future<void> _showLogs() async {
-    final logs = await _tahoReader.getLogs();
-    showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6, expand: false,
-        builder: (context, scrollController) => ListView.builder(
-          controller: scrollController, itemCount: logs.length,
-          itemBuilder: (context, index) => Padding(padding: const EdgeInsets.all(8), child: Text(logs[index], style: const TextStyle(fontSize: 10))),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          shape: const Border(),
+          collapsedShape: const Border(),
+          title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
+          leading: const Icon(Icons.calendar_month, color: primaryGreen),
+          children: day.vehicles.map((v) => ListTile(
+            dense: true, title: Text(v.registration), subtitle: Text("${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}"),
+            trailing: Text("${v.endKm - v.startKm} km"),
+          )).toList(),
         ),
       ),
     );

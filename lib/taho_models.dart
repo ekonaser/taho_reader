@@ -33,6 +33,17 @@ double convertLon(int value) {
 }
 
 
+class LastDownload {
+  final DateTime? lastDownload;
+
+  LastDownload({this.lastDownload});
+
+  String get formattedDate {
+    if (lastDownload == null) return "Never";
+    return "${lastDownload!.day.toString().padLeft(2, '0')}.${lastDownload!.month.toString().padLeft(2, '0')}.${lastDownload!.year} ${lastDownload!.hour.toString().padLeft(2, '0')}:${lastDownload!.minute.toString().padLeft(2, '0')}";
+  }
+}
+
 class CardId {
   final String cardNumber;
   final String issuer;
@@ -69,6 +80,18 @@ class CardId {
       return "Unknown";
     }
   }
+}
+
+class DriverLicense {
+  final String issuingAuthority;
+  final String issuingNation;
+  final String licenseNumber;
+
+  DriverLicense({
+    required this.issuingAuthority,
+    required this.issuingNation,
+    required this.licenseNumber,
+  });
 }
 
 class VehicleRecord {
@@ -281,9 +304,11 @@ class Violation {
 class ParsedTachoData {
   final CardId cardId;
   final List<DailyActivities> activities;
+  final DriverLicense? driverLicense;
 
   ParsedTachoData({
     required this.cardId,
     required this.activities,
+    this.driverLicense,
   });
 }

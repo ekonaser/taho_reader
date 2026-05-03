@@ -23,7 +23,6 @@ class MainActivity : FlutterActivity() {
   private var sequenceNumber = 0
   private val usbPermissionAction = "com.example.taho_reader.USB_PERMISSION"
 
-  private val apduLogs = mutableListOf<String>()
   private var lastAtr: ByteArray? = null
 
   private val executor = Executors.newSingleThreadExecutor()
@@ -70,7 +69,6 @@ class MainActivity : FlutterActivity() {
           "isConnected" -> result.success(usbConnection != null)
           "isCardPresent" -> result.success(isCardPresent())
           "getReaderInfo" -> result.success(getReaderInfo())
-          "getLogs" -> result.success(apduLogs.toList())
           "getATR" -> result.success(getATR())
 
           "close" -> {

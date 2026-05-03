@@ -5,11 +5,15 @@ import 'dart:math';
 class ActivityTimeline extends StatefulWidget {
   final List<DailyActivities> activities;
   final VoidCallback? onDateTap;
+  final int utcOffset;
+  final ValueChanged<int> onUtcOffsetChanged;
 
   const ActivityTimeline({
     super.key,
     required this.activities,
     this.onDateTap,
+    required this.utcOffset,
+    required this.onUtcOffsetChanged,
   });
 
   @override
@@ -91,6 +95,34 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                     "${(_hourWidth / 70.0).toStringAsFixed(1)}x",
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                     textAlign: TextAlign.right,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                        onPressed: () => widget.onUtcOffsetChanged(widget.utcOffset == -12 ? 14 : widget.utcOffset - 1),
+                      ),
+                      Text(
+                        "UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}",
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                        onPressed: () => widget.onUtcOffsetChanged(widget.utcOffset == 14 ? -12 : widget.utcOffset + 1),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -204,7 +236,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // --- HEADER ---
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
-      double activityTime = firstAct.time / 60.0;
+      double activityTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
       double prevTime = activityTime;
 
       // MoveToEx / LineTo (Začetna črta seje)
@@ -216,7 +248,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // --- WHILE (counter > 0) ---
       while (internalCounter > 0 && ptr < day.activities.length) {
         final currentAct = day.activities[ptr];
-        activityTime = currentAct.time / 60.0;
+        activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
         double duration = activityTime - prevTime;
 
         // switch (activityType) { ... FillRect ... }

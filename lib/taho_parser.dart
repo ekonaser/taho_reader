@@ -12,6 +12,17 @@ class TahoParser {
     return String.fromCharCodes(sub).replaceAll('\x00', '').trim();
   }
 
+  int _u16(Uint8List section, int offset) {
+    if (offset + 2 > section.length) return 0;
+    final bd = ByteData.sublistView(section, offset, offset + 2);
+    return bd.getUint16(0, Endian.big);
+  }
+
+  int _u8(Uint8List section, int offset) {
+    if (offset >= section.length) return 0;
+    return section[offset];
+  }
+
   int _u32(Uint8List section, int offset) {
     if (offset + 4 > section.length) return 0;
     final bd = ByteData.sublistView(section, offset, offset + 4);
@@ -47,6 +58,13 @@ class TahoParser {
     return val.toSigned(24);
   }
 
+  LastDownload parseLastDownload(Uint8List section) {
+    if (section.length < 4) return LastDownload(lastDownload: null);
+    int ts = _u32(section, 0);
+    if (ts == 0 || ts == 0xFFFFFFFF) return LastDownload(lastDownload: null);
+    return LastDownload(lastDownload: _epoch(ts));
+  }
+
   CardId parseCardId(Uint8List section) {
     return CardId(
       cardNumber: _str(section, 1, 16),
@@ -60,6 +78,21 @@ class TahoParser {
           ? section.sublist(137, 141).toList()
           : [0, 0, 0, 0],
       country: _str(section, 141, 2),
+    );
+  }
+
+  DriverLicense parseDriverLicense(Uint8List section) {
+    if (section.length < 53) {
+      return DriverLicense(
+        issuingAuthority: "",
+        issuingNation: "",
+        licenseNumber: "",
+      );
+    }
+    return DriverLicense(
+      issuingAuthority: _str(section, 0, 36),
+      issuingNation: _str(section, 36, 1),
+      licenseNumber: _str(section, 37, 16),
     );
   }
 
@@ -198,14 +231,18 @@ class TahoParserG2 extends TahoParser {
 
   ParsedTachoData parseAll(
     Uint8List cardSection,
-    Uint8List activitySection,
-  ) {
+    Uint8List activitySection, {
+    Uint8List? licenseSection,
+  }) {
     final card = parseCardId(cardSection);
     final activities = parseActivities(activitySection);
+    final license =
+        licenseSection != null ? parseDriverLicense(licenseSection) : null;
 
     return ParsedTachoData(
       cardId: card,
       activities: activities,
+      driverLicense: license,
     );
   }
 }
