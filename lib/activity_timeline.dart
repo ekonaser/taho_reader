@@ -26,7 +26,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   @override
   Widget build(BuildContext context) {
     const primaryGreen = Color(0xFF28B52F);
-    final double totalWidth = _hourWidth * 24;
+    final double totalWidth = _hourWidth * 27;
 
     if (widget.activities.isEmpty) {
       return const Center(
@@ -139,7 +139,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: List.generate(24, (h) => Container(
+                      children: List.generate(27, (h) => Container(
                         width: _hourWidth,
                         height: double.infinity,
                         decoration: BoxDecoration(
@@ -155,7 +155,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                               child: Padding(
                                 padding: const EdgeInsets.only(left: 4, bottom: 8),
                                 child: Text(
-                                  "${h.toString().padLeft(2, '0')}:00",
+                                  "${(h % 24).toString().padLeft(2, '0')}:00",
                                   style: const TextStyle(
                                     fontSize: 10,
                                     color: Colors.grey,

@@ -135,45 +135,24 @@ class _TahoDashboardState extends State<TahoDashboard> {
     });
   }
 
-  Map<String, Uint8List> _extractEFSections(Uint8List bytes) {
-    final Map<String, Uint8List> out = {};
-
-    Uint8List? findSection(int b1, int b2, int gen, int l1, int l2) {
-      for (int i = 0; i <= bytes.length - 5; i++) {
-        if (bytes[i] == b1 &&
-            bytes[i + 1] == b2 &&
-            bytes[i + 2] == gen &&
-            bytes[i + 3] == l1 &&
-            bytes[i + 4] == l2) {
-          final int len = (l1 << 8) | l2;
-          final int start = i + 5;
-          if (start + len <= bytes.length) {
-            return bytes.sublist(start, start + len);
-          }
-        }
+  Map<String, Uint8List> _extractAllSections(Uint8List bytes) {
+    final Map<String, Uint8List> sections = {};
+    int i = 0;
+    while (i <= bytes.length - 5) {
+      int b1 = bytes[i];
+      int b2 = bytes[i + 1];
+      int gen = bytes[i + 2];
+      int len = (bytes[i + 3] << 8) | bytes[i + 4];
+      
+      if (i + 5 + len <= bytes.length) {
+        String key = "${b1.toRadixString(16).padLeft(2, '0')}${b2.toRadixString(16).padLeft(2, '0')}_$gen";
+        sections[key] = bytes.sublist(i + 5, i + 5 + len);
+        i += 5 + len;
+      } else {
+        i++;
       }
-      return null;
     }
-
-    final id = findSection(0x05, 0x20, 0x00, 0x00, 0x8F) ?? findSection(0x05, 0x20, 0x02, 0x00, 0x8F);
-    if (id != null) out['id'] = id;
-
-    final lastDl = findSection(0x05, 0x0E, 0x00, 0x00, 0x04) ?? findSection(0x05, 0x0E, 0x02, 0x00, 0x04);
-    if (lastDl != null) out['lastDl'] = lastDl;
-
-    final veh = findSection(0x05, 0x05, 0x00, 0x18, 0x3A) ?? findSection(0x05, 0x05, 0x02, 0x25, 0x82);
-    if (veh != null) out['veh'] = veh;
-
-    final act = findSection(0x05, 0x04, 0x00, 0x35, 0xD4) ?? findSection(0x05, 0x04, 0x02, 0x35, 0xD4);
-    if (act != null) out['act'] = act;
-
-    final license = findSection(0x05, 0x21, 0x00, 0x00, 0x35) ?? findSection(0x05, 0x21, 0x02, 0x00, 0x35);
-    if (license != null) out['license'] = license;
-
-    final gnss = findSection(0x05, 0x24, 0x02, 0x13, 0xB2);
-    if (gnss != null) out['gnss'] = gnss;
-
-    return out;
+    return sections;
   }
 
   Future<void> _pickAndParseFile() async {
@@ -186,20 +165,56 @@ class _TahoDashboardState extends State<TahoDashboard> {
       final file = File(result.files.single.path!);
       final bytes = await file.readAsBytes();
 
-      final ef = _extractEFSections(bytes);
-      final parser = TahoParser();
-      final parserG2 = TahoParserG2();
+      final s = _extractAllSections(bytes);
+
+      // Reconstruct Gen 1
+      final g1 = TahoGen1Card(
+        iccData: s['0002_0'] ?? Uint8List(0),
+        icData: s['0005_0'] ?? Uint8List(0),
+        cardCertDATAptr: s['c100_0'] ?? Uint8List(0),
+        CACertDATAptr: s['c108_0'] ?? Uint8List(0),
+        idData: s['0520_0'] ?? Uint8List(0),
+        driverLicenseDATAptr: s['0521_0'] ?? Uint8List(0),
+        activitiesDATAptr: s['0504_0'] ?? Uint8List(0),
+        vehiclesDATAptr: s['0505_0'] ?? Uint8List(0),
+        appIdentification: s['0501_0'] ?? Uint8List(0),
+        cardDownload: s['050e_0'] ?? Uint8List(0),
+        eventsData: s['0502_0'] ?? Uint8List(0),
+        faultsData: s['0503_0'] ?? Uint8List(0),
+        places: s['0506_0'] ?? Uint8List(0),
+        currentUsage: s['0507_0'] ?? Uint8List(0),
+        controlActivityData: s['0508_0'] ?? Uint8List(0),
+        specificConditions: s['0522_0'] ?? Uint8List(0),
+      );
+
+      // Reconstruct Gen 2
+      final g2 = TahoGen2Card(
+        appIdentification: s['0501_2'] ?? Uint8List(0),
+        cardCertDATAptr: s['c100_2'] ?? Uint8List(0),
+        cardSignCertificate: s['c101_2'] ?? Uint8List(0),
+        CACertDATAptr: s['c108_2'] ?? Uint8List(0),
+        linkCertificate: s['c109_2'] ?? Uint8List(0),
+        idData: s['0520_2'] ?? Uint8List(0),
+        cardDownload: s['050e_2'] ?? Uint8List(0),
+        driverLicenseDATAptr: s['0521_2'] ?? Uint8List(0),
+        eventsData: s['0502_2'] ?? Uint8List(0),
+        faultsData: s['0503_2'] ?? Uint8List(0),
+        activitiesDATAptr: s['0504_2'] ?? Uint8List(0),
+        vehiclesDATAptr: s['0505_2'] ?? Uint8List(0),
+        places: s['0506_2'] ?? Uint8List(0),
+        currentUsage: s['0507_2'] ?? Uint8List(0),
+        controlActivityData: s['0508_2'] ?? Uint8List(0),
+        specificConditions: s['0522_2'] ?? Uint8List(0),
+        vehicleUnitsUsed: s['0523_2'] ?? Uint8List(0),
+        GNSS: s['0524_2'] ?? Uint8List(0),
+      );
 
       setState(() {
-        if (ef.containsKey('id')) cardId = parser.parseCardId(ef['id']!);
-        if (ef.containsKey('license')) driverLicense = parser.parseDriverLicense(ef['license']!);
-        if (ef.containsKey('lastDl')) lastDownload = parser.parseLastDownload(ef['lastDl']!);
-        if (ef.containsKey('act')) activities = parser.parseActivities(ef['act']!);
-        if (ef.containsKey('veh')) vehicles = parser.parseVehicles(ef['veh']!);
-        if (ef.containsKey('gnss')) gnssRecords = parserG2.parseGnss(ef['gnss']!);
+        gen1Card = g1.idData.isNotEmpty ? g1 : null;
+        gen2Card = g2.idData.isNotEmpty ? g2 : null;
+        _updateParsedData();
+        isLoading = false;
       });
-
-      setState(() => isLoading = false);
     } catch (e) {
       setState(() => isLoading = false);
       if (mounted) {
