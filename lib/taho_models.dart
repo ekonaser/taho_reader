@@ -167,6 +167,8 @@ class DailyActivities {
 }
 
 class TahoGen1Card {
+  final Uint8List iccData;
+  final Uint8List icData;
   final Uint8List cardCertDATAptr;
   final Uint8List CACertDATAptr;
   final Uint8List idData;
@@ -183,6 +185,8 @@ class TahoGen1Card {
   final Uint8List specificConditions;
 
   TahoGen1Card({
+    required this.iccData,
+    required this.icData,
     required this.cardCertDATAptr,
     required this.CACertDATAptr,
     required this.idData,
@@ -212,7 +216,7 @@ class TahoGen2Card {
   final Uint8List eventsData;
   final Uint8List faultsData;
   final Uint8List activitiesDATAptr;
-  //final Uint8List vehiclesDATAptr;
+  final Uint8List vehiclesDATAptr;
   final Uint8List places;
   final Uint8List currentUsage;
   final Uint8List controlActivityData;
@@ -232,7 +236,7 @@ class TahoGen2Card {
     required this.eventsData,
     required this.faultsData,
     required this.activitiesDATAptr,
-    //required this.vehiclesDATAptr,
+    required this.vehiclesDATAptr,
     required this.places,
     required this.currentUsage,
     required this.controlActivityData,

@@ -140,8 +140,6 @@ class TahoParser {
     int k1 = (rawData[0] << 8) | rawData[1];
     int k2 = (rawData[2] << 8) | rawData[3];
 
-    print("k1: $k1, k2: $k2");
-
     Uint8List buffer = rawData.sublist(4, 4 + 13776);
     int size = 13776;
 
