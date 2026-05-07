@@ -1,6 +1,23 @@
 import 'package:flutter/material.dart';
 import 'taho_models.dart';
 import 'dart:math';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+class ActivitySummary {
+  int rest = 0;
+  int availability = 0;
+  int work = 0;
+  int driving = 0;
+
+  void reset() {
+    rest = 0;
+    availability = 0;
+    work = 0;
+    driving = 0;
+  }
+}
 
 class ActivityTimeline extends StatefulWidget {
   final List<DailyActivities> activities;
@@ -22,6 +39,7 @@ class ActivityTimeline extends StatefulWidget {
 
 class _ActivityTimelineState extends State<ActivityTimeline> {
   double _hourWidth = 120.0;
+  final ActivitySummary _summary = ActivitySummary();
 
   @override
   Widget build(BuildContext context) {
@@ -183,29 +201,359 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             ),
           ),
           const Divider(),
-          _buildLegend(primaryGreen),
+          _buildLegend(primaryGreen, _summary),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Activity Log",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.picture_as_pdf, color: primaryGreen),
+                  onPressed: () => _exportToPdf(day, primaryGreen),
+                  tooltip: "Export to PDF",
+                ),
+              ],
+            ),
+          ),
+          ..._buildActivityLog(day, primaryGreen),
+          const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildLegend(Color primaryGreen) {
+  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen) async {
+    final doc = pw.Document();
+    final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.value);
+    final dateStr = day.date.toLocal().toString().split(' ').first;
+    final utcStr = "UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}";
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("Tacho Activity Report", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+                    pw.Text("Date: $dateStr", style: const pw.TextStyle(fontSize: 14)),
+                  ],
+                ),
+                pw.Text(utcStr, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              ],
+            ),
+            pw.SizedBox(height: 20),
+            pw.Text("Timeline (27h View)", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            _buildPdfTimeline(day, pdfPrimaryGreen),
+            pw.SizedBox(height: 20),
+            pw.Divider(),
+            pw.SizedBox(height: 10),
+            pw.Text("Detailed Activity Log", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            ..._buildPdfActivityLog(day, pdfPrimaryGreen),
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) => doc.save(),
+      name: 'ActivityLog_$dateStr.pdf',
+    );
+  }
+
+  pw.Widget _buildPdfTimeline(DailyActivities day, PdfColor primaryColor) {
+    const double totalHours = 27.0;
+    final double pageWidth = 500.0; // Standard usable width on A4
+    final double hourWidth = pageWidth / totalHours;
+
+    List<pw.Widget> blocks = [];
+    
+    void drawBlocks(int startIndex, int counter) {
+      if (counter <= 0) return;
+      int ptr = startIndex;
+      int internalCounter = counter;
+      final firstAct = day.activities[ptr];
+      int activityType = firstAct.activity;
+      double prevTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
+      ptr++;
+      internalCounter -= 2;
+
+      while (internalCounter > 0 && ptr < day.activities.length) {
+        final currentAct = day.activities[ptr];
+        double activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
+        double duration = activityTime - prevTime;
+        if (duration > 0) {
+          PdfColor color = PdfColors.grey;
+          if (activityType == 0) color = primaryColor;
+          if (activityType == 2) color = PdfColors.orange;
+          if (activityType == 3) color = PdfColors.blue;
+          
+          blocks.add(pw.Positioned(
+            left: prevTime * hourWidth,
+            top: 5,
+            bottom: 5,
+            child: pw.Container(
+              width: max(1.0, duration * hourWidth),
+              color: color,
+            ),
+          ));
+        }
+        activityType = currentAct.activity;
+        prevTime = activityTime;
+        ptr++;
+        internalCounter -= 2;
+        if (currentAct.card == 0 && internalCounter > 2) {
+          drawBlocks(ptr, internalCounter);
+          break;
+        }
+      }
+    }
+
+    drawBlocks(0, day.activities.length * 2);
+
+    return pw.Container(
+      height: 60,
+      decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300)),
+      child: pw.Stack(
+        children: [
+          // Hour markers
+          ...List.generate(28, (h) => pw.Positioned(
+            left: h * hourWidth,
+            top: 0,
+            bottom: 0,
+            child: pw.Container(width: 0.5, color: PdfColors.grey300),
+          )),
+          ...blocks,
+        ],
+      ),
+    );
+  }
+
+  List<pw.Widget> _buildPdfActivityLog(DailyActivities day, PdfColor primaryColor) {
+    List<pw.Widget> items = [];
+    
+    void process(int startIndex, int counter) {
+      if (counter <= 0) return;
+      int ptr = startIndex;
+      int internalCounter = counter;
+      final firstAct = day.activities[ptr];
+      int activityType = firstAct.activity;
+      int prevTime = firstAct.time;
+      ptr++;
+      internalCounter -= 2;
+
+      while (internalCounter > 0 && ptr < day.activities.length) {
+        final currentAct = day.activities[ptr];
+        int duration = currentAct.time - prevTime;
+        if (duration > 0) {
+          items.add(_pdfActivityItem(activityType, prevTime, currentAct.time, duration, primaryColor));
+        }
+        activityType = currentAct.activity;
+        prevTime = currentAct.time;
+        ptr++;
+        internalCounter -= 2;
+        if (currentAct.card == 0 && internalCounter > 2) {
+          process(ptr, internalCounter);
+          break;
+        }
+      }
+    }
+
+    process(0, day.activities.length * 2);
+    return items;
+  }
+
+  pw.Widget _pdfActivityItem(int type, int start, int end, int duration, PdfColor primaryColor) {
+    String label = "Unknown";
+    PdfColor color = PdfColors.grey;
+    if (type == 0) { label = "Rest"; color = primaryColor; }
+    else if (type == 1) { label = "Availability"; color = PdfColors.grey; }
+    else if (type == 2) { label = "Work"; color = PdfColors.orange; }
+    else if (type == 3) { label = "Driving"; color = PdfColors.blue; }
+
+    String format(int t) {
+      int h = ((t + widget.utcOffset * 60) ~/ 60) % 24;
+      if (h < 0) h += 24;
+      int m = (t + widget.utcOffset * 60) % 60;
+      if (m < 0) m += 60;
+      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+    }
+
+    final durStr = "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
+      child: pw.Row(
+        children: [
+          pw.Container(width: 10, height: 10, color: color),
+          pw.SizedBox(width: 10),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(label, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+              pw.Text("${format(start)} - ${format(end)}", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+            ],
+          ),
+          pw.Spacer(),
+          pw.Text(durStr, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: color)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildActivityLog(DailyActivities day, Color primaryGreen) {
+    List<Widget> items = [];
+    if (day.activities.isEmpty) return items;
+
+    void processLog(int startIndex, int counter) {
+      if (counter <= 0) return;
+      int ptr = startIndex;
+      int internalCounter = counter;
+
+      final firstAct = day.activities[ptr];
+      int activityType = firstAct.activity;
+      int prevTime = firstAct.time;
+
+      ptr++;
+      internalCounter -= 2;
+
+      while (internalCounter > 0 && ptr < day.activities.length) {
+        final currentAct = day.activities[ptr];
+        int duration = currentAct.time - prevTime;
+
+        if (duration > 0) {
+          items.add(_activityLogItem(activityType, prevTime, currentAct.time, duration, primaryGreen));
+        }
+
+        activityType = currentAct.activity;
+        prevTime = currentAct.time;
+
+        ptr++;
+        internalCounter -= 2;
+
+        if (currentAct.card == 0 && internalCounter > 2) {
+          processLog(ptr, internalCounter);
+          break;
+        }
+      }
+    }
+
+    processLog(0, day.activities.length * 2);
+    return items;
+  }
+
+  Widget _activityLogItem(int type, int start, int end, int duration, Color primaryGreen) {
+    String label;
+    CustomPainter painter;
+    Color color;
+
+    switch (type) {
+      case 0:
+        label = "Rest";
+        painter = TahoRestPainter(color: primaryGreen);
+        color = primaryGreen;
+        break;
+      case 1:
+        label = "Availability";
+        painter = const TahoAvailabilityPainter(color: Colors.grey);
+        color = Colors.grey;
+        break;
+      case 2:
+        label = "Work";
+        painter = const TahoWorkPainter(color: Colors.orange);
+        color = Colors.orange;
+        break;
+      case 3:
+        label = "Driving";
+        painter = const TahoDrivePainter(color: Colors.blue);
+        color = Colors.blue;
+        break;
+      default:
+        label = "Unknown";
+        painter = const TahoAvailabilityPainter(color: Colors.grey);
+        color = Colors.grey;
+    }
+
+    String formatTime(int totalMinutes) {
+      int h = ((totalMinutes ~/ 60) % 24);
+      if (h < 0) h += 24;
+      int m = totalMinutes % 60;
+      if (m < 0) m += 60;
+      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+    }
+
+    final startStr = formatTime(start + widget.utcOffset * 60);
+    final endStr = formatTime(end + widget.utcOffset * 60);
+    final durStr = "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CustomPaint(painter: painter),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text("$startStr - $endStr", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            durStr,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 15,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegend(Color primaryGreen, ActivitySummary summary) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Wrap(
         spacing: 20,
         runSpacing: 10,
         children: [
-          _legendItem(const TahoDrivePainter(color: Colors.blue), "Drive"),
-          _legendItem(const TahoWorkPainter(color: Colors.orange), "Work"),
-          _legendItem(const TahoAvailabilityPainter(color: Colors.grey), "Availability"),
-          _legendItem(TahoRestPainter(color: primaryGreen), "Rest"),
+          _legendItem(const TahoDrivePainter(color: Colors.blue), "Drive", summary.driving),
+          _legendItem(const TahoWorkPainter(color: Colors.orange), "Work", summary.work),
+          _legendItem(const TahoAvailabilityPainter(color: Colors.grey), "Availability", summary.availability),
+          _legendItem(TahoRestPainter(color: primaryGreen), "Rest", summary.rest),
         ],
       ),
     );
   }
 
-  Widget _legendItem(CustomPainter painter, String label) {
+  Widget _legendItem(CustomPainter painter, String label, int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    final timeStr = "${h}h ${m.toString().padLeft(2, '0')}m";
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -214,9 +562,19 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           painter: painter,
         ),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
+            ),
+            Text(
+              timeStr,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
       ],
     );
@@ -226,6 +584,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   List<Widget> _buildRecursiveTimeline(DailyActivities day, Color primaryGreen) {
     List<Widget> widgets = [];
     if (day.activities.isEmpty) return widgets;
+
+    _summary.reset();
 
     void drawOneDay(int startIndex, int counter) {
       if (counter <= 0) return;
@@ -250,16 +610,31 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final currentAct = day.activities[ptr];
         activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
         double duration = activityTime - prevTime;
+        int durationMinutes = (currentAct.time - day.activities[ptr - 1].time);
 
         // switch (activityType) { ... FillRect ... }
         if (duration > 0) {
           Color color;
           switch (activityType) {
-            case 0: color = primaryGreen; break;   // REST (0x1FFF1F v C++)
-            case 1: color = Colors.grey; break;     // ADMIN/AVAIL (0x6B6B6B)
-            case 2: color = Colors.orange; break;   // WORK (0xFF9D00)
-            case 3: color = Colors.blue; break;     // DRIVING (0x00A5FF)
-            default: color = Colors.grey; break;
+            case 0:
+              color = primaryGreen;
+              _summary.rest += durationMinutes;
+              break; // REST (0x1FFF1F v C++)
+            case 1:
+              color = Colors.grey;
+              _summary.availability += durationMinutes;
+              break; // ADMIN/AVAIL (0x6B6B6B)
+            case 2:
+              color = Colors.orange;
+              _summary.work += durationMinutes;
+              break; // WORK (0xFF9D00)
+            case 3:
+              color = Colors.blue;
+              _summary.driving += durationMinutes;
+              break; // DRIVING (0x00A5FF)
+            default:
+              color = Colors.grey;
+              break;
           }
           widgets.add(_buildActivityBlock(prevTime, duration, color));
         }
