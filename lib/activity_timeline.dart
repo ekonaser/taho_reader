@@ -374,6 +374,87 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return items;
   }
 
+  pw.Widget _buildPdfIcon(int type, PdfColor color) {
+    return pw.CustomPaint(
+      size: const PdfPoint(12, 12),
+      painter: (PdfGraphics canvas, PdfPoint size) {
+        if (type == 3) { // Driving: Circle with dot
+          canvas.setStrokeColor(color);
+          canvas.setLineWidth(1.0);
+          canvas.drawEllipse(size.x / 2, size.y / 2, size.x * 0.4, size.y * 0.4);
+          canvas.strokePath();
+          canvas.setFillColor(color);
+          canvas.drawEllipse(size.x / 2, size.y / 2, size.x * 0.1, size.y * 0.1);
+          canvas.fillPath();
+        } else if (type == 2) { // Work: Crossed hammers
+          canvas.setFillColor(color);
+          final double w = size.x;
+          final double h = size.y;
+          final double cx = w / 2;
+          final double cy = h / 2;
+          // Rotation angle -45 degrees (matching TahoWorkPainter's -0.785 rad)
+          const double cosA = 0.7071; // cos(-45deg)
+          const double sinA = -0.7071; // sin(-45deg)
+          // Scale down to fit within the PDF icon box (12x12)
+          const double s = 0.7;
+
+          void drawHammer(bool mirrored) {
+            void drawPath(List<double> relCoords) {
+              for (int i = 0; i < relCoords.length; i += 2) {
+                final double rx = relCoords[i] * s;
+                final double ry = relCoords[i + 1] * s;
+
+                // 1. Rotate -45 degrees (around center 0,0)
+                double rxRot = rx * cosA - ry * sinA;
+                double ryRot = rx * sinA + ry * cosA;
+
+                // 2. Mirror across Y-axis AFTER rotation to create the "X" shape
+                if (mirrored) rxRot = -rxRot;
+
+                // 3. Map to PDF coordinates (origin bottom-left, size 12x12)
+                final double tx = cx + rxRot * w;
+                final double ty = cy - ryRot * h; 
+
+                if (i == 0) {
+                  canvas.moveTo(tx, ty);
+                } else {
+                  canvas.lineTo(tx, ty);
+                }
+              }
+              canvas.closePath();
+              canvas.fillPath();
+            }
+
+            // Handle: Rect(-0.06, -0.4, 0.12, 0.9) -> relative Y from -0.4 to 0.5
+            drawPath([-0.06, -0.4, 0.06, -0.4, 0.06, 0.5, -0.06, 0.5]);
+            // Head: Rect(-0.3, -0.5, 0.6, 0.2) -> relative Y from -0.5 to -0.3
+            drawPath([-0.3, -0.5, 0.3, -0.5, 0.3, -0.3, -0.3, -0.3]);
+          }
+
+          drawHammer(false);
+          drawHammer(true);
+        } else if (type == 1) { // Availability: Box with diagonal
+          canvas.setStrokeColor(color);
+          canvas.setLineWidth(1.0);
+          canvas.drawRect(size.x * 0.1, size.y * 0.1, size.x * 0.8, size.y * 0.8);
+          canvas.strokePath();
+          canvas.moveTo(size.x * 0.1, size.y * 0.1);
+          canvas.lineTo(size.x * 0.9, size.y * 0.9);
+          canvas.strokePath();
+        } else if (type == 0) { // Rest: Bed icon
+          canvas.setStrokeColor(color);
+          canvas.setLineWidth(1.0);
+          canvas.moveTo(size.x * 0.2, size.y * 0.2);
+          canvas.lineTo(size.x * 0.2, size.y * 0.8);
+          canvas.moveTo(size.x * 0.2, size.y * 0.5);
+          canvas.lineTo(size.x * 0.8, size.y * 0.5);
+          canvas.lineTo(size.x * 0.8, size.y * 0.2);
+          canvas.strokePath();
+        }
+      },
+    );
+  }
+
   pw.Widget _pdfActivityItem(int type, int start, int end, int duration, PdfColor primaryColor) {
     String label = "Unknown";
     PdfColor color = PdfColors.grey;
@@ -382,28 +463,22 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     else if (type == 2) { label = "Work"; color = PdfColors.orange; }
     else if (type == 3) { label = "Driving"; color = PdfColors.blue; }
 
-    String format(int t) {
-      int h = ((t + widget.utcOffset * 60) ~/ 60) % 24;
-      if (h < 0) h += 24;
-      int m = (t + widget.utcOffset * 60) % 60;
-      if (m < 0) m += 60;
-      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
-    }
-
-    final durStr = "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
+    final startStr = _formatPdfTime(start);
+    final endStr = _formatPdfTime(end);
+    final durStr = _formatPdfDuration(duration);
 
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
       decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
       child: pw.Row(
         children: [
-          pw.Container(width: 10, height: 10, color: color),
+          pw.SizedBox(width: 12, height: 12, child: _buildPdfIcon(type, color)),
           pw.SizedBox(width: 10),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(label, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-              pw.Text("${format(start)} - ${format(end)}", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+              pw.Text("$startStr - $endStr", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
             ],
           ),
           pw.Spacer(),
@@ -412,6 +487,19 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       ),
     );
   }
+
+  String _formatPdfTime(int minutes) {
+    int h = ((minutes + widget.utcOffset * 60) ~/ 60) % 24;
+    if (h < 0) h += 24;
+    int m = (minutes + widget.utcOffset * 60) % 60;
+    if (m < 0) m += 60;
+    return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+  }
+
+  String _formatPdfDuration(int minutes) {
+    return "${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}";
+  }
+
 
   List<Widget> _buildActivityLog(DailyActivities day, Color primaryGreen) {
     List<Widget> items = [];
