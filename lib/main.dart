@@ -542,14 +542,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
       case 0: return _buildHomeTab();
       case 1: return _buildVehiclesTab();
       case 2:
-        final filteredActivities = activities.where((a) =>
-          _selectedActivityDate == null ||
-          (a.date.year == _selectedActivityDate!.year &&
-           a.date.month == _selectedActivityDate!.month &&
-           a.date.day == _selectedActivityDate!.day)
-        ).toList();
         return ActivityTimeline(
-          activities: filteredActivities,
+          activities: activities,
+          selectedDate: _selectedActivityDate,
           utcOffset: _utcOffset,
           onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
           onDateTap: _selectActivityDate,
