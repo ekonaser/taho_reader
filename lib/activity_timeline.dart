@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'taho_models.dart';
+import 'taho_painters.dart';
 import 'dart:math';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -666,6 +667,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               color: color,
             ),
           ));
+
+          if (day.activities[ptr - 1].crew == 1) {
+            blocks.add(pw.Positioned(
+              left: prevTime * hourWidth,
+              top: activitySlot == 1 ? 4 + 22 : 32 + 22,
+              child: pw.Container(
+                width: max(1.0, duration * hourWidth),
+                height: 2,
+                color: PdfColors.red,
+              ),
+            ));
+          }
         }
 
         if (currentAct.slot != activitySlot) {
@@ -1034,15 +1047,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           _legendItem(const TahoWorkPainter(color: Colors.orange), "Work", summary.work),
           _legendItem(const TahoAvailabilityPainter(color: Colors.grey), "Availability", summary.availability),
           _legendItem(TahoRestPainter(color: primaryGreen), "Rest", summary.rest),
+          _legendItem(const TahoSessionPainter(color: Colors.black), "Session", -1),
+          _legendItem(const TahoCrewPainter(color: Colors.red), "Crew", -1),
         ],
       ),
     );
   }
 
   Widget _legendItem(CustomPainter painter, String label, int minutes) {
-    final h = minutes ~/ 60;
-    final m = minutes % 60;
-    final timeStr = "${h}h ${m.toString().padLeft(2, '0')}m";
+    final timeStr = minutes >= 0 ? " ${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m" : "";
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1060,10 +1073,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               label,
               style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
-            Text(
-              timeStr,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
+            if (timeStr.isNotEmpty)
+              Text(
+                timeStr,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
           ],
         ),
       ],
@@ -1128,6 +1142,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               break;
           }
           widgets.add(_buildActivityBlock(prevTime, duration, color, activitySlot));
+
+          if (day.activities[ptr - 1].crew == 1) {
+            widgets.add(_buildCrewLine(prevTime, duration, activitySlot));
+          }
         }
 
         // Draw session line if slot changes
@@ -1213,6 +1231,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
+  Widget _buildCrewLine(double startHour, double durationHours, int slot) {
+    final double blockWidth = max(2.0, durationHours * _hourWidth);
+    final double top = slot == 1 ? 5 + 30 : 43 + 30;
+    return Positioned(
+      left: startHour * _hourWidth,
+      width: blockWidth,
+      top: top,
+      height: 2,
+      child: Container(
+        color: Colors.red,
+      ),
+    );
+  }
+
   // Pomožna funkcija za risanje navpične črte ob vstavljanju/izvleku kartice (kot LineTo v C++)
   Widget _buildSessionLine(double hour, int slot) {
     // Further increased height to 40 (from 36) and adjusted top to protrude 4px above/below track
@@ -1288,101 +1320,4 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 }
 
-class TahoDrivePainter extends CustomPainter {
-  final Color color;
-  const TahoDrivePainter({this.color = Colors.black});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.125;
-    canvas.drawCircle(size.center(Offset.zero), size.width * 0.4, paint);
-    final fillPaint = Paint()..color = color;
-    canvas.drawCircle(size.center(Offset.zero), size.width * 0.1, fillPaint);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
-class TahoWorkPainter extends CustomPainter {
-  final Color color;
-  const TahoWorkPainter({this.color = Colors.black});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final double w = size.width;
-    final double h = size.height;
-
-    // Funkcija za risanje enega kladiva, ki ga bomo nato zrcalili
-    void drawHammer(Canvas canvas, bool mirrored) {
-      canvas.save();
-      canvas.translate(w / 2, h / 2);
-      if (mirrored) canvas.scale(-1, 1);
-      canvas.rotate(-0.785); // 45 stopinj v radianih
-
-      // Ročaj (handle)
-      canvas.drawRect(
-        Rect.fromLTWH(-w * 0.06, -h * 0.4, w * 0.12, h * 0.9),
-        paint,
-      );
-
-      // Glava kladiva (head)
-      // Narišemo glavo, ki je pravokotna na ročaj
-      canvas.drawRect(
-        Rect.fromLTWH(-w * 0.3, -h * 0.5, w * 0.6, h * 0.2),
-        paint,
-      );
-
-      canvas.restore();
-    }
-
-    drawHammer(canvas, false);
-    drawHammer(canvas, true);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class TahoAvailabilityPainter extends CustomPainter {
-  final Color color;
-  const TahoAvailabilityPainter({this.color = Colors.black});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.15;
-    final rect = Rect.fromLTWH(size.width * 0.1, size.height * 0.1, size.width * 0.8, size.height * 0.8);
-    canvas.drawRect(rect, paint);
-    canvas.drawLine(rect.bottomLeft, rect.topRight, paint);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class TahoRestPainter extends CustomPainter {
-  final Color color;
-  const TahoRestPainter({this.color = Colors.black});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.square
-      ..strokeWidth = size.width * 0.15;
-    final path = Path();
-    path.moveTo(size.width * 0.2, size.height * 0.8);
-    path.lineTo(size.width * 0.2, size.height * 0.2);
-    path.moveTo(size.width * 0.2, size.height * 0.5);
-    path.lineTo(size.width * 0.8, size.height * 0.5);
-    path.lineTo(size.width * 0.8, size.height * 0.8);
-    canvas.drawPath(path, paint);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
