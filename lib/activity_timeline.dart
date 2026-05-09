@@ -221,9 +221,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Container(
-                  width: totalWidth + 45,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  width: totalWidth + 80,
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -262,6 +263,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                         right: 0,
                         height: 80,
                         child: Stack(
+                          clipBehavior: Clip.none,
                           children: _buildRecursiveTimeline(day, primaryGreen),
                         ),
                       ),
@@ -631,13 +633,23 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       int internalCounter = counter;
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
-      double prevTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
+      int activitySlot = firstAct.slot;
+      double activityTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
+      double prevTime = activityTime;
+
+      // Start session line
+      blocks.add(pw.Positioned(
+        left: activityTime * hourWidth - 0.5,
+        top: activitySlot == 1 ? 4 : 32,
+        child: pw.Container(width: 1, height: 24, color: PdfColors.black),
+      ));
+
       ptr++;
       internalCounter -= 2;
 
       while (internalCounter > 0 && ptr < day.activities.length) {
         final currentAct = day.activities[ptr];
-        double activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
+        activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
         double duration = activityTime - prevTime;
         if (duration > 0) {
           PdfColor color = PdfColors.grey;
@@ -647,15 +659,30 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
           blocks.add(pw.Positioned(
             left: prevTime * hourWidth,
-            top: 5,
-            bottom: 5,
+            top: activitySlot == 1 ? 4 : 32,
             child: pw.Container(
               width: max(1.0, duration * hourWidth),
+              height: 24,
               color: color,
             ),
           ));
         }
+
+        if (currentAct.slot != activitySlot) {
+          blocks.add(pw.Positioned(
+            left: activityTime * hourWidth - 0.5,
+            top: activitySlot == 1 ? 4 : 32,
+            child: pw.Container(width: 1, height: 24, color: PdfColors.black),
+          ));
+          blocks.add(pw.Positioned(
+            left: activityTime * hourWidth - 0.5,
+            top: currentAct.slot == 1 ? 4 : 32,
+            child: pw.Container(width: 1, height: 24, color: PdfColors.black),
+          ));
+        }
+
         activityType = currentAct.activity;
+        activitySlot = currentAct.slot;
         prevTime = activityTime;
         ptr++;
         internalCounter -= 2;
@@ -664,6 +691,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           break;
         }
       }
+      // End session line
+      blocks.add(pw.Positioned(
+        left: activityTime * hourWidth - 0.5,
+        top: activitySlot == 1 ? 4 : 32,
+        child: pw.Container(width: 1, height: 24, color: PdfColors.black),
+      ));
     }
 
     drawBlocks(0, day.activities.length * 2);
@@ -673,6 +706,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300)),
       child: pw.Stack(
         children: [
+          pw.Positioned(
+            left: 0,
+            right: 0,
+            top: 30,
+            child: pw.Container(height: 0.5, color: PdfColors.grey200),
+          ),
           // Hour markers
           ...List.generate(28, (h) => pw.Positioned(
             left: h * hourWidth,
@@ -681,6 +720,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             child: pw.Container(width: 0.5, color: PdfColors.grey300),
           )),
           ...blocks,
+          pw.Positioned(
+            left: 2,
+            top: 10,
+            child: pw.Text("S2", style: pw.TextStyle(fontSize: 6, color: PdfColors.grey400)),
+          ),
+          pw.Positioned(
+            left: 2,
+            top: 42,
+            child: pw.Text("S1", style: pw.TextStyle(fontSize: 6, color: PdfColors.grey400)),
+          ),
         ],
       ),
     );
@@ -695,6 +744,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       int internalCounter = counter;
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
+      int activitySlot = firstAct.slot;
       int prevTime = firstAct.time;
       ptr++;
       internalCounter -= 2;
@@ -703,9 +753,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final currentAct = day.activities[ptr];
         int duration = currentAct.time - prevTime;
         if (duration > 0) {
-          items.add(_pdfActivityItem(activityType, prevTime, currentAct.time, duration, primaryColor));
+          items.add(_pdfActivityItem(activityType, prevTime, currentAct.time, duration, activitySlot, primaryColor));
         }
         activityType = currentAct.activity;
+        activitySlot = currentAct.slot;
         prevTime = currentAct.time;
         ptr++;
         internalCounter -= 2;
@@ -801,7 +852,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  pw.Widget _pdfActivityItem(int type, int start, int end, int duration, PdfColor primaryColor) {
+  pw.Widget _pdfActivityItem(int type, int start, int end, int duration, int slot, PdfColor primaryColor) {
     String label = "Unknown";
     PdfColor color = PdfColors.grey;
     if (type == 0) { label = "Rest"; color = primaryColor; }
@@ -809,6 +860,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     else if (type == 2) { label = "Work"; color = PdfColors.orange; }
     else if (type == 3) { label = "Driving"; color = PdfColors.blue; }
 
+    final slotStr = slot == 1 ? " (Slot 2)" : " (Slot 1)";
     final startStr = _formatPdfTime(start);
     final endStr = _formatPdfTime(end);
     final durStr = _formatPdfDuration(duration);
@@ -823,7 +875,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(label, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+              pw.Text(label + slotStr, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
               pw.Text("$startStr - $endStr", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
             ],
           ),
@@ -858,6 +910,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
+      int activitySlot = firstAct.slot;
       int prevTime = firstAct.time;
 
       ptr++;
@@ -868,10 +921,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         int duration = currentAct.time - prevTime;
 
         if (duration > 0) {
-          items.add(_activityLogItem(activityType, prevTime, currentAct.time, duration, primaryGreen));
+          items.add(_activityLogItem(activityType, prevTime, currentAct.time, duration, primaryGreen, activitySlot));
         }
 
         activityType = currentAct.activity;
+        activitySlot = currentAct.slot;
         prevTime = currentAct.time;
 
         ptr++;
@@ -888,7 +942,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return items;
   }
 
-  Widget _activityLogItem(int type, int start, int end, int duration, Color primaryGreen) {
+  Widget _activityLogItem(int type, int start, int end, int duration, Color primaryGreen, int slot) {
     String label;
     CustomPainter painter;
     Color color;
@@ -932,6 +986,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final endStr = formatTime(end + widget.utcOffset * 60);
     final durStr = "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
 
+    final String slotStr = slot == 1 ? " (Slot 2)" : " (Slot 1)";
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -948,7 +1004,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              Text(label + slotStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               Text("$startStr - $endStr", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
             ],
           ),
@@ -1030,11 +1086,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // --- HEADER ---
       final firstAct = day.activities[ptr];
       int activityType = firstAct.activity;
+      int activitySlot = firstAct.slot;
       double activityTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
       double prevTime = activityTime;
 
       // MoveToEx / LineTo (Začetna črta seje)
-      widgets.add(_buildSessionLine(activityTime));
+      widgets.add(_buildSessionLine(activityTime, activitySlot));
 
       ptr++;
       internalCounter -= 2;
@@ -1070,11 +1127,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               color = Colors.grey;
               break;
           }
-          widgets.add(_buildActivityBlock(prevTime, duration, color));
+          widgets.add(_buildActivityBlock(prevTime, duration, color, activitySlot));
+        }
+
+        // Draw session line if slot changes
+        if (currentAct.slot != activitySlot) {
+          widgets.add(_buildSessionLine(activityTime, activitySlot));
+          widgets.add(_buildSessionLine(activityTime, currentAct.slot));
         }
 
         // activityType = (activity >> 11) & 0b11; (Update za naslednji interval)
         activityType = currentAct.activity;
+        activitySlot = currentAct.slot;
         prevTime = activityTime;
 
         ptr++;
@@ -1088,22 +1152,57 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
 
       // MoveToEx / LineTo (Zaključna črta na koncu funkcije)
-      widgets.add(_buildSessionLine(activityTime));
+      widgets.add(_buildSessionLine(activityTime, activitySlot));
     }
+
+    // Add slot labels and separator
+    widgets.add(Positioned(
+      left: -38,
+      top: 5,
+      height: 32,
+      child: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text("SLOT 2",
+              style: TextStyle(fontSize: 7, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+        ),
+      ),
+    ));
+    widgets.add(Positioned(
+      left: -38,
+      top: 43,
+      height: 32,
+      child: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text("SLOT 1",
+              style: TextStyle(fontSize: 7, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+        ),
+      ),
+    ));
+    widgets.add(Positioned(
+      left: 0,
+      right: 0,
+      top: 39.5,
+      child: Container(height: 1, color: Colors.grey.withValues(alpha: 0.2)),
+    ));
 
     // Pokličemo s številom bajtov (2 bajta na zapis)
     drawOneDay(0, day.activities.length * 2);
     return widgets;
   }
 
-  Widget _buildActivityBlock(double startHour, double durationHours, Color color) {
+  Widget _buildActivityBlock(double startHour, double durationHours, Color color, int slot) {
     final double blockWidth = max(2.0, durationHours * _hourWidth);
+    // slot == 0 -> Driver (Bottom), slot == 1 -> Co-driver (Top)
+    final double top = slot == 1 ? 5 : 43;
+    const double height = 32;
 
     return Positioned(
       left: startHour * _hourWidth,
       width: blockWidth,
-      top: 10,
-      bottom: 10,
+      top: top,
+      height: height,
       child: Container(
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.8),
@@ -1115,14 +1214,27 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   // Pomožna funkcija za risanje navpične črte ob vstavljanju/izvleku kartice (kot LineTo v C++)
-  Widget _buildSessionLine(double hour) {
+  Widget _buildSessionLine(double hour, int slot) {
+    // Further increased height to 40 (from 36) and adjusted top to protrude 4px above/below track
+    // This makes the session boundaries much more prominent.
+    final double top = slot == 1 ? 1 : 39;
+    const double height = 40;
     return Positioned(
       left: hour * _hourWidth - 1,
-      top: 0,
-      bottom: 0,
+      top: top,
+      height: height,
       child: Container(
-        width: 2,
-        color: Colors.black87,
+        width: 1.5,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.5),
+              spreadRadius: 0.5,
+              blurRadius: 0.5,
+            ),
+          ],
+        ),
       ),
     );
   }
