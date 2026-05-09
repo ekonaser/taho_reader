@@ -414,6 +414,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           case 2: summary.work += duration; break;
           case 3: summary.driving += duration; break;
         }
+
+        // If this record indicates card extraction, skip the interval to the next insertion
+        if (curr.card == 0) i++;
       }
     }
     return summary;
@@ -430,8 +433,44 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   ActivitySummary _calculate14DaySummary() {
-    final filteredDays = widget.activities.take(14).toList();
-    return _calculateSummary(filteredDays);
+    // 1. Calculate the 14 eligible UTC midnight timestamps (mimicking Python logic)
+    final double now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    final int todayMidnight = (now - (now % 86400)).toInt();
+
+    final Set<int> eligibleDays = {};
+    for (int i = 0; i < 14; i++) {
+      eligibleDays.add(todayMidnight - (i * 86400));
+    }
+
+    final summary = ActivitySummary();
+
+    // 2. Iterate through activities and check against eligibleDays
+    for (var day in widget.activities) {
+      final dt = day.date.toUtc();
+      final ts = DateTime.utc(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+
+      if (eligibleDays.contains(ts)) {
+        // Sum activities exactly like in the Daily View (handling session gaps)
+        for (int i = 1; i < day.activities.length; i++) {
+          final prev = day.activities[i - 1];
+          final curr = day.activities[i];
+
+          final duration = curr.time - prev.time;
+          if (duration > 0) {
+            switch (prev.activity) {
+              case 0: summary.rest += duration; break;
+              case 1: summary.availability += duration; break;
+              case 2: summary.work += duration; break;
+              case 3: summary.driving += duration; break;
+            }
+          }
+
+          // If this record indicates card extraction, skip the interval to the next insertion
+          if (curr.card == 0) i++;
+        }
+      }
+    }
+    return summary;
   }
 
   Widget _buildVisualBreakdown(Color primaryGreen, ActivitySummary summary) {
