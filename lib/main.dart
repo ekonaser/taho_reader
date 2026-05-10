@@ -544,6 +544,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       case 2:
         return ActivityTimeline(
           activities: activities,
+          cardId: cardId,
           selectedDate: _selectedActivityDate,
           utcOffset: _utcOffset,
           onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
