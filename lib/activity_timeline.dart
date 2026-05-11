@@ -4,7 +4,7 @@ import 'taho_painters.dart';
 import 'dart:math';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'pdf_helper.dart';
 
 class ActivitySummary {
   int rest = 0;
@@ -288,7 +288,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.picture_as_pdf, color: primaryGreen),
-                    onPressed: () => _exportToPdf(day, primaryGreen),
+                    onPressed: () => _showExportOptions(day, primaryGreen),
                     tooltip: "Export to PDF",
                   ),
                 ],
@@ -577,7 +577,36 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen) async {
+  void _showExportOptions(DailyActivities day, Color primaryGreen) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new, color: Colors.blue),
+              title: const Text('Open PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportToPdf(day, primaryGreen, openImmediately: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt, color: Colors.green),
+              title: const Text('Save PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportToPdf(day, primaryGreen, openImmediately: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen, {bool openImmediately = true}) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
     final dateStr = day.date.toLocal().toString().split(' ').first;
@@ -722,10 +751,21 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) => doc.save(),
-      name: 'ActivityLog_$dateStr.pdf',
+    final fileName = 'ActivityLog_$dateStr';
+    final file = await SaveAndOpenDocument.savePdf(
+      name: fileName,
+      pdf: doc,
     );
+
+    if (openImmediately) {
+      await SaveAndOpenDocument.openFile(file);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("PDF saved to ${file.path}")),
+        );
+      }
+    }
   }
 
   pw.Widget _pdfLegendItem(String label, PdfColor color) {

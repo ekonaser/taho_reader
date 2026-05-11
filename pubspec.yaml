@@ -45,6 +45,8 @@ dependencies:
   flutter_polyline_points: ^2.1.0
   shared_preferences: ^2.3.5
   pdf: ^3.11.1
+  path_provider_android: ^2.1.2
+  open_file: ^3.3.2
   printing: ^5.13.2
 
 dev_dependencies:
