@@ -693,12 +693,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
 
     // Add Detailed Landscape Page for high-detail Timeline
-    // We use A4 Landscape for maximum compatibility with mobile print drivers
+    // Using A3 Landscape for maximum detail as requested by user
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4.landscape,
+        pageFormat: PdfPageFormat.a3.landscape,
         build: (pw.Context context) {
-          final format = PdfPageFormat.a4.landscape;
+          final format = PdfPageFormat.a3.landscape;
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -708,43 +708,44 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.Text("HIGH-DETAIL ACTIVITY TIMELINE",
-                          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+                      pw.Text("HIGH-DETAIL ACTIVITY TIMELINE (A3)",
+                          style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
                       pw.Text("Driver: ${widget.cardId?.name} ${widget.cardId?.surname} | Date: $dateStr | $utcStr",
-                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                          style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
                     ],
                   ),
                   pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: pdfPrimaryGreen, width: 1),
+                      border: pw.Border.all(color: pdfPrimaryGreen, width: 1.5),
                       borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                     ),
-                    child: pw.Text("27H ZOOM", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+                    child: pw.Text("HIGH RESOLUTION", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
                   ),
                 ],
               ),
-              pw.SizedBox(height: 15),
               pw.Expanded(
-                child: _buildDetailedLandscapeTimeline(day, pdfPrimaryGreen, format),
+                child: pw.Center(
+                  child: _buildDetailedLandscapeTimeline(day, pdfPrimaryGreen, format),
+                ),
               ),
-              pw.SizedBox(height: 10),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.center,
                 children: [
                   _pdfLegendItem("Rest", pdfPrimaryGreen),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: 30),
                   _pdfLegendItem("Work", PdfColors.orange),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: 30),
                   _pdfLegendItem("Availability", PdfColors.grey),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: 30),
                   _pdfLegendItem("Driving", PdfColors.blue),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: 30),
                   _pdfLegendItem("Session", PdfColors.black),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: 30),
                   _pdfLegendItem("Crew", PdfColors.red),
                 ],
               ),
+              pw.SizedBox(height: 20),
             ],
           );
         },
@@ -772,46 +773,57 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return pw.Row(
       mainAxisSize: pw.MainAxisSize.min,
       children: [
-        pw.Container(width: 12, height: 12, color: color),
-        pw.SizedBox(width: 6),
-        pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
+        pw.Container(width: 14, height: 14, color: color),
+        pw.SizedBox(width: 8),
+        pw.Text(label, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
       ],
     );
   }
 
   pw.Widget _buildDetailedLandscapeTimeline(DailyActivities day, PdfColor primaryColor, PdfPageFormat format) {
     const double totalHours = 27.0;
-    const double labelWidth = 40.0;
+    const double labelWidth = 60.0;
     
-    // Dynamically calculate width based on the actual page format to prevent orientation mismatch
-    final double timelineWidth = format.width - format.marginLeft - format.marginRight - labelWidth - 10;
+    // Dynamically calculate width based on the actual page format (A3 Landscape)
+    final double timelineWidth = format.width - format.marginLeft - format.marginRight - labelWidth - 20;
     final double hourWidth = timelineWidth / totalHours;
 
     List<pw.Widget> blocks = [];
     List<pw.Widget> sessionLines = [];
     List<pw.Widget> markers = [];
 
-    // Track heights - scaled for A4 Landscape
-    const double trackHeight = 40.0;
-    const double separatorTop = trackHeight + 10;
-    const double slot1Top = separatorTop + 5;
-    const double slot2Top = 5.0;
+    // Compact track heights as requested (reduced y-axis)
+    const double trackHeight = 30.0; 
+    const double trackGap = 10.0;
+    const double slot2Top = 15.0; // Co-driver / Slot 2
+    const double separatorTop = slot2Top + trackHeight + (trackGap / 2);
+    const double slot1Top = slot2Top + trackHeight + trackGap; // Driver / Slot 1
+    const double totalTimelineHeight = slot1Top + trackHeight + 40; // Total height including hour labels
 
-    // Detailed minute markers (every 15 minutes)
+    // Detailed minute markers (every 5 and 15 minutes)
     for (int h = 0; h < 27; h++) {
-      for (int m = 15; m < 60; m += 15) {
+      for (int m = 5; m < 60; m += 5) {
         double left = labelWidth + (h * hourWidth) + (m / 60.0) * hourWidth;
+        bool isQuarter = m % 15 == 0;
+        
         markers.add(pw.Positioned(
           left: left,
-          top: 0,
-          bottom: 30,
-          child: pw.Container(width: 0.2, color: PdfColors.grey100),
+          top: isQuarter ? 10 : 20,
+          bottom: 35,
+          child: pw.Container(
+            width: isQuarter ? 0.4 : 0.2, 
+            color: isQuarter ? PdfColors.grey200 : PdfColors.grey100
+          ),
         ));
         
         markers.add(pw.Positioned(
           left: left,
-          bottom: 30,
-          child: pw.Container(width: 0.5, height: 3, color: PdfColors.grey300),
+          bottom: 35,
+          child: pw.Container(
+            width: isQuarter ? 0.8 : 0.4, 
+            height: isQuarter ? 5 : 2.5, 
+            color: PdfColors.grey400
+          ),
         ));
       }
     }
@@ -830,7 +842,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // Start session line
       sessionLines.add(pw.Positioned(
         left: labelWidth + (activityTime * hourWidth) - 1.5,
-        top: activitySlot == 1 ? slot2Top - 2 : slot1Top - 2,
+        top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
         child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
       ));
 
@@ -861,7 +873,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           if (day.activities[ptr - 1].crew == 1) {
             blocks.add(pw.Positioned(
               left: labelWidth + (prevTime * hourWidth),
-              top: activitySlot == 1 ? slot2Top + trackHeight - 3 : slot1Top + trackHeight - 3,
+              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 3,
               child: pw.Container(
                 width: max(0.5, duration * hourWidth),
                 height: 3,
@@ -874,12 +886,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         if (currentAct.slot != activitySlot) {
           sessionLines.add(pw.Positioned(
             left: labelWidth + (activityTime * hourWidth) - 1.5,
-            top: activitySlot == 1 ? slot2Top - 2 : slot1Top - 2,
+            top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
             child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
           ));
           sessionLines.add(pw.Positioned(
             left: labelWidth + (activityTime * hourWidth) - 1.5,
-            top: currentAct.slot == 1 ? slot2Top - 2 : slot1Top - 2,
+            top: (currentAct.slot == 1 ? slot2Top : slot1Top) - 2,
             child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
           ));
         }
@@ -899,7 +911,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // End session line
       sessionLines.add(pw.Positioned(
         left: labelWidth + (activityTime * hourWidth) - 1.5,
-        top: activitySlot == 1 ? slot2Top - 2 : slot1Top - 2,
+        top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
         child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
       ));
     }
@@ -907,19 +919,23 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     drawBlocks(0, day.activities.length * 2);
 
     return pw.Container(
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400, width: 0.5)),
+      height: totalTimelineHeight,
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+        color: PdfColors.white,
+      ),
       child: pw.Stack(
         children: [
           // Track Labels
           pw.Positioned(
             left: 5,
-            top: slot2Top + 15,
-            child: pw.Text("SLOT 2", style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
+            top: slot2Top + (trackHeight / 2) - 5,
+            child: pw.Text("SLOT 2", style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
           ),
           pw.Positioned(
             left: 5,
-            top: slot1Top + 15,
-            child: pw.Text("SLOT 1", style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
+            top: slot1Top + (trackHeight / 2) - 5,
+            child: pw.Text("SLOT 1", style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
           ),
           // Separator
           pw.Positioned(
@@ -931,26 +947,25 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           // Grid lines
           ...markers,
           // Hour markers & Labels
-          for (int h = 0; h < 28; h++) ...[
+          for (int h = 0; h <= 27; h++) ...[
             pw.Positioned(
               left: labelWidth + (h * hourWidth),
               top: 0,
-              bottom: 30,
+              bottom: 35,
               child: pw.Container(width: 0.8, color: PdfColors.grey300),
             ),
-            if (h < 28)
-              pw.Positioned(
-                left: labelWidth + (h * hourWidth) - 15,
-                bottom: 10,
-                child: pw.SizedBox(
-                  width: 30,
-                  child: pw.Text(
-                    "${(h % 24).toString().padLeft(2, '0')}:00",
-                    style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
-                    textAlign: pw.TextAlign.center,
-                  ),
+            pw.Positioned(
+              left: labelWidth + (h * hourWidth) - 20,
+              bottom: 12,
+              child: pw.SizedBox(
+                width: 40,
+                child: pw.Text(
+                  "${(h % 24).toString().padLeft(2, '0')}:00",
+                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
+                  textAlign: pw.TextAlign.center,
                 ),
               ),
+            ),
           ],
           ...blocks,
           ...sessionLines,
