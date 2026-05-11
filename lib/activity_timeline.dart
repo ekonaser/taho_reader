@@ -732,17 +732,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.center,
                 children: [
-                  _pdfLegendItem("Rest", pdfPrimaryGreen),
+                  _pdfLegendItem("Rest", pdfPrimaryGreen, 0),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Work", PdfColors.orange),
+                  _pdfLegendItem("Work", PdfColors.orange, 2),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Availability", PdfColors.grey),
+                  _pdfLegendItem("Availability", PdfColors.grey, 1),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Driving", PdfColors.blue),
+                  _pdfLegendItem("Driving", PdfColors.blue, 3),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Session", PdfColors.black),
+                  _pdfLegendItem("Session", PdfColors.black, -1),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Crew", PdfColors.red),
+                  _pdfLegendItem("Crew", PdfColors.red, -2),
                 ],
               ),
               pw.SizedBox(height: 20),
@@ -769,11 +769,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
   }
 
-  pw.Widget _pdfLegendItem(String label, PdfColor color) {
+  pw.Widget _pdfLegendItem(String label, PdfColor color, int type) {
     return pw.Row(
       mainAxisSize: pw.MainAxisSize.min,
       children: [
-        pw.Container(width: 14, height: 14, color: color),
+        pw.SizedBox(
+          width: 14,
+          height: 14,
+          child: _buildPdfIcon(type, color),
+        ),
         pw.SizedBox(width: 8),
         pw.Text(label, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
       ],
@@ -792,13 +796,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     List<pw.Widget> sessionLines = [];
     List<pw.Widget> markers = [];
 
-    // Compact track heights as requested (reduced y-axis)
+    // Compact track heights
     const double trackHeight = 30.0; 
     const double trackGap = 10.0;
     const double slot2Top = 15.0; // Co-driver / Slot 2
     const double separatorTop = slot2Top + trackHeight + (trackGap / 2);
     const double slot1Top = slot2Top + trackHeight + trackGap; // Driver / Slot 1
-    const double totalTimelineHeight = slot1Top + trackHeight + 40; // Total height including hour labels
+    const double totalTimelineHeight = slot1Top + trackHeight + 40; 
 
     // Detailed minute markers (every 5 and 15 minutes)
     for (int h = 0; h < 27; h++) {
@@ -841,9 +845,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       // Start session line
       sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 1.5,
-        top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
-        child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
+        left: labelWidth + (activityTime * hourWidth) - 0.75,
+        top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
+        child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
       ));
 
       ptr++;
@@ -860,23 +864,28 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           else if (activityType == 2) color = PdfColors.orange;
           else if (activityType == 3) color = PdfColors.blue;
 
+          // Activity block
           blocks.add(pw.Positioned(
             left: labelWidth + (prevTime * hourWidth),
             top: activitySlot == 1 ? slot2Top : slot1Top,
-            child: pw.Container(
-              width: max(0.5, duration * hourWidth),
-              height: trackHeight,
-              color: color,
+            child: pw.Opacity(
+              opacity: 0.8,
+              child: pw.Container(
+                width: max(1.0, duration * hourWidth),
+                height: trackHeight,
+                color: color,
+              ),
             ),
           ));
 
           if (day.activities[ptr - 1].crew == 1) {
+            // Crew indicator
             blocks.add(pw.Positioned(
               left: labelWidth + (prevTime * hourWidth),
-              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 3,
+              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 2,
               child: pw.Container(
                 width: max(0.5, duration * hourWidth),
-                height: 3,
+                height: 1.5,
                 color: PdfColors.red,
               ),
             ));
@@ -885,14 +894,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
         if (currentAct.slot != activitySlot) {
           sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 1.5,
-            top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
-            child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
+            left: labelWidth + (activityTime * hourWidth) - 0.75,
+            top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
+            child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
           ));
           sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 1.5,
-            top: (currentAct.slot == 1 ? slot2Top : slot1Top) - 2,
-            child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
+            left: labelWidth + (activityTime * hourWidth) - 0.75,
+            top: (currentAct.slot == 1 ? slot2Top : slot1Top) - 4,
+            child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
           ));
         }
 
@@ -910,9 +919,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       // End session line
       sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 1.5,
-        top: (activitySlot == 1 ? slot2Top : slot1Top) - 2,
-        child: pw.Container(width: 3.0, height: trackHeight + 4, color: PdfColors.black),
+        left: labelWidth + (activityTime * hourWidth) - 0.75,
+        top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
+        child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
       ));
     }
 
@@ -1224,9 +1233,21 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return pw.CustomPaint(
       size: const PdfPoint(12, 12),
       painter: (PdfGraphics canvas, PdfPoint size) {
-        if (type == 3) { // Driving: Circle with dot
+        if (type == -1) { // Session: Vertical line
           canvas.setStrokeColor(color);
           canvas.setLineWidth(1.0);
+          canvas.moveTo(size.x / 2, 0);
+          canvas.lineTo(size.x / 2, size.y);
+          canvas.strokePath();
+        } else if (type == -2) { // Crew: Horizontal line
+          canvas.setStrokeColor(color);
+          canvas.setLineWidth(1.5);
+          canvas.moveTo(0, size.y / 2);
+          canvas.lineTo(size.x, size.y / 2);
+          canvas.strokePath();
+        } else if (type == 3) { // Driving: Circle with dot
+          canvas.setStrokeColor(color);
+          canvas.setLineWidth(1.2);
           canvas.drawEllipse(size.x / 2, size.y / 2, size.x * 0.4, size.y * 0.4);
           canvas.strokePath();
           canvas.setFillColor(color);
@@ -1238,10 +1259,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           final double h = size.y;
           final double cx = w / 2;
           final double cy = h / 2;
-          // Rotation angle -45 degrees (matching TahoWorkPainter's -0.785 rad)
-          const double cosA = 0.7071; // cos(-45deg)
-          const double sinA = -0.7071; // sin(-45deg)
-          // Scale down to fit within the PDF icon box (12x12)
+          const double cosA = 0.7071; 
+          const double sinA = -0.7071; 
           const double s = 0.7;
 
           void drawHammer(bool mirrored) {
@@ -1249,39 +1268,25 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               for (int i = 0; i < relCoords.length; i += 2) {
                 final double rx = relCoords[i] * s;
                 final double ry = relCoords[i + 1] * s;
-
-                // 1. Rotate -45 degrees (around center 0,0)
                 double rxRot = rx * cosA - ry * sinA;
                 double ryRot = rx * sinA + ry * cosA;
-
-                // 2. Mirror across Y-axis AFTER rotation to create the "X" shape
                 if (mirrored) rxRot = -rxRot;
-
-                // 3. Map to PDF coordinates (origin bottom-left, size 12x12)
                 final double tx = cx + rxRot * w;
                 final double ty = cy - ryRot * h;
-
-                if (i == 0) {
-                  canvas.moveTo(tx, ty);
-                } else {
-                  canvas.lineTo(tx, ty);
-                }
+                if (i == 0) canvas.moveTo(tx, ty);
+                else canvas.lineTo(tx, ty);
               }
               canvas.closePath();
               canvas.fillPath();
             }
-
-            // Handle: Rect(-0.06, -0.4, 0.12, 0.9) -> relative Y from -0.4 to 0.5
             drawPath([-0.06, -0.4, 0.06, -0.4, 0.06, 0.5, -0.06, 0.5]);
-            // Head: Rect(-0.3, -0.5, 0.6, 0.2) -> relative Y from -0.5 to -0.3
             drawPath([-0.3, -0.5, 0.3, -0.5, 0.3, -0.3, -0.3, -0.3]);
           }
-
           drawHammer(false);
           drawHammer(true);
         } else if (type == 1) { // Availability: Box with diagonal
           canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.0);
+          canvas.setLineWidth(1.5);
           canvas.drawRect(size.x * 0.1, size.y * 0.1, size.x * 0.8, size.y * 0.8);
           canvas.strokePath();
           canvas.moveTo(size.x * 0.1, size.y * 0.1);
@@ -1289,7 +1294,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           canvas.strokePath();
         } else if (type == 0) { // Rest: Bed icon
           canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.0);
+          canvas.setLineWidth(1.5);
           canvas.moveTo(size.x * 0.2, size.y * 0.2);
           canvas.lineTo(size.x * 0.2, size.y * 0.8);
           canvas.moveTo(size.x * 0.2, size.y * 0.5);
