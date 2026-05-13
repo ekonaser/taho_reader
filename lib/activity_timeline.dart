@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
@@ -310,6 +311,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               "Custom Period",
               "Summary for the selected range",
               primaryGreen,
+              onExport: () {
+                final days = _getFilteredRangeDays();
+                final rangeStr = _startDate != null && _endDate != null
+                    ? "${_startDate!.day}.${_startDate!.month} - ${_endDate!.day}.${_endDate!.month}"
+                    : "Unknown";
+                _showSummaryExportOptions(days, "Period Report", rangeStr, primaryGreen);
+              },
               trailing: InkWell(
                 onTap: () => _selectDateRange(context),
                 borderRadius: BorderRadius.circular(12),
@@ -354,6 +362,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               "Monthly Activity",
               "Total summary for the selected period",
               primaryGreen,
+              onExport: () {
+                final days = _getFilteredMonthlyDays();
+                final rangeStr = "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}";
+                _showSummaryExportOptions(days, "Monthly Report", rangeStr, primaryGreen);
+              },
               trailing: InkWell(
                 onTap: () => _selectMonth(context),
                 borderRadius: BorderRadius.circular(12),
@@ -399,7 +412,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Widget _buildSummaryHeader(String title, String subtitle, Color primaryGreen, {Widget? trailing}) {
+  Widget _buildSummaryHeader(String title, String subtitle, Color primaryGreen, {Widget? trailing, VoidCallback? onExport}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Row(
@@ -413,7 +426,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               ],
             ),
           ),
-          if (trailing != null) trailing,
+          if (onExport != null)
+            IconButton(
+              icon: Icon(Icons.picture_as_pdf, color: primaryGreen),
+              onPressed: onExport,
+            ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing,
+          ],
         ],
       ),
     );
@@ -478,45 +499,28 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return _calculateSummary(filteredDays);
   }
 
-  ActivitySummary _calculateRangeSummary() {
-    if (_startDate == null || _endDate == null) return ActivitySummary();
-
-    // Normalize dates to midnights in UTC for consistent comparison
+  List<DailyActivities> _getFilteredRangeDays() {
+    if (_startDate == null || _endDate == null) return [];
     final startTs = DateTime.utc(_startDate!.year, _startDate!.month, _startDate!.day).millisecondsSinceEpoch ~/ 1000;
     final endTs = DateTime.utc(_endDate!.year, _endDate!.month, _endDate!.day).millisecondsSinceEpoch ~/ 1000;
-
     final Set<int> eligibleDays = {};
-    // Add every day between start and end (inclusive)
     for (int ts = startTs; ts <= endTs; ts += 86400) {
       eligibleDays.add(ts);
     }
-
-    final summary = ActivitySummary();
-
-    for (var day in widget.activities) {
+    return widget.activities.where((day) {
       final dt = day.date.toUtc();
       final ts = DateTime.utc(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+      return eligibleDays.contains(ts);
+    }).toList();
+  }
 
-      if (eligibleDays.contains(ts)) {
-        for (int i = 1; i < day.activities.length; i++) {
-          final prev = day.activities[i - 1];
-          final curr = day.activities[i];
+  List<DailyActivities> _getFilteredMonthlyDays() {
+    return widget.activities.where((day) =>
+    day.date.year == _selectedMonth.year && day.date.month == _selectedMonth.month).toList();
+  }
 
-          final duration = curr.time - prev.time;
-          if (duration > 0) {
-            switch (prev.activity) {
-              case 0: summary.rest += duration; break;
-              case 1: summary.availability += duration; break;
-              case 2: summary.work += duration; break;
-              case 3: summary.driving += duration; break;
-            }
-          }
-
-          if (curr.card == 0) i++;
-        }
-      }
-    }
-    return summary;
+  ActivitySummary _calculateRangeSummary() {
+    return _calculateSummary(_getFilteredRangeDays());
   }
 
   Widget _buildVisualBreakdown(Color primaryGreen, ActivitySummary summary) {
@@ -824,10 +828,170 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
 
     final fileName = 'ActivityLog_$dateStr';
-    final file = await SaveAndOpenDocument.savePdf(
-      name: fileName,
-      pdf: doc,
+    File? file;
+
+    if (openImmediately) {
+      file = await SaveAndOpenDocument.savePdfToCache(
+        pdf: doc,
+      );
+    } else {
+      file = await SaveAndOpenDocument.savePdfWithPicker(
+        name: fileName,
+        pdf: doc,
+      );
+    }
+
+    if (file == null) return;
+
+    if (openImmediately) {
+      await SaveAndOpenDocument.openFile(file);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("PDF saved to ${file.path}")),
+        );
+      }
+    }
+  }
+
+  void _showSummaryExportOptions(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new, color: Colors.blue),
+              title: const Text('Open Summary PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, openImmediately: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt, color: Colors.green),
+              title: const Text('Save Summary PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, openImmediately: false);
+              },
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Future<void> _exportSummaryToPdf(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen, {required bool openImmediately}) async {
+    final doc = pw.Document();
+    final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
+    final summary = _calculateSummary(days);
+
+    String formatDur(int mins) {
+      final h = mins ~/ 60;
+      final m = mins % 60;
+      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        header: (context) => pw.Column(
+          children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(title, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+                    pw.Text("Period: $rangeStr", style: const pw.TextStyle(fontSize: 14)),
+                  ],
+                ),
+                pw.Text("UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}",
+                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              ],
+            ),
+            pw.SizedBox(height: 10),
+            pw.Divider(thickness: 0.5),
+            pw.SizedBox(height: 10),
+          ],
+        ),
+        build: (context) => [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("DRIVER DETAILS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("${widget.cardId?.name ?? 'Unknown'} ${widget.cardId?.surname ?? ''}",
+                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                    pw.Text("Card: ${widget.cardId?.cardNumber ?? 'N/A'}", style: const pw.TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text("GRAND TOTALS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                    pw.SizedBox(height: 4),
+                    _pdfSummaryRow("Driving:", formatDur(summary.driving), PdfColors.blue),
+                    _pdfSummaryRow("Work:", formatDur(summary.work), PdfColors.orange),
+                    _pdfSummaryRow("Availability:", formatDur(summary.availability), PdfColors.grey),
+                    _pdfSummaryRow("Rest:", formatDur(summary.rest), pdfPrimaryGreen),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text("DAILY BREAKDOWN", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+          pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
+          pw.SizedBox(height: 5),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
+            data: days.map((day) {
+              final s = _calculateDaySummary(day);
+              return [
+                day.date.toLocal().toString().split(' ').first,
+                formatDur(s.driving),
+                formatDur(s.work),
+                formatDur(s.availability),
+                formatDur(s.rest),
+              ];
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+
+    final fileName = '${title.replaceAll(' ', '_')}_$rangeStr';
+    File? file;
+
+    if (openImmediately) {
+      file = await SaveAndOpenDocument.savePdfToCache(
+        pdf: doc,
+      );
+    } else {
+      file = await SaveAndOpenDocument.savePdfWithPicker(
+        name: fileName,
+        pdf: doc,
+      );
+    }
+
+    if (file == null) return;
 
     if (openImmediately) {
       await SaveAndOpenDocument.openFile(file);
