@@ -42,19 +42,27 @@ class ActivityTimeline extends StatefulWidget {
   State<ActivityTimeline> createState() => _ActivityTimelineState();
 }
 
-enum _ViewMode { daily, last14Days, monthly }
+enum _ViewMode { daily, period, monthly }
 
 class _ActivityTimelineState extends State<ActivityTimeline> {
   double _hourWidth = 120.0;
   final ActivitySummary _summary = ActivitySummary();
   _ViewMode _viewMode = _ViewMode.daily;
   DateTime _selectedMonth = DateTime.now();
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   @override
   void initState() {
     super.initState();
     if (widget.activities.isNotEmpty) {
       _selectedMonth = DateTime(widget.activities.first.date.year, widget.activities.first.date.month);
+      // Default period: last 14 days or last available
+      _endDate = widget.activities.first.date;
+      _startDate = _endDate!.subtract(const Duration(days: 13));
+    } else {
+      _endDate = DateTime.now();
+      _startDate = _endDate!.subtract(const Duration(days: 13));
     }
   }
 
@@ -123,7 +131,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               child: Row(
                 children: [
                   _buildToggleItem("Daily", _viewMode == _ViewMode.daily, () => setState(() => _viewMode = _ViewMode.daily), primaryGreen),
-                  _buildToggleItem("14 Days", _viewMode == _ViewMode.last14Days, () => setState(() => _viewMode = _ViewMode.last14Days), primaryGreen),
+                  _buildToggleItem("Periods", _viewMode == _ViewMode.period, () => setState(() => _viewMode = _ViewMode.period), primaryGreen),
                   _buildToggleItem("Monthly", _viewMode == _ViewMode.monthly, () => setState(() => _viewMode = _ViewMode.monthly), primaryGreen),
                 ],
               ),
@@ -296,17 +304,50 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             ),
             ..._buildActivityLog(day, primaryGreen),
             const SizedBox(height: 32),
-          ] else if (_viewMode == _ViewMode.last14Days) ...[
-            // Last 14 Days View
-            _buildSummaryHeader("Last 14 Days", "Summary for the most recent 14 days of activity", primaryGreen),
-            _buildSummaryContent(_calculate14DaySummary(), primaryGreen),
+          ] else if (_viewMode == _ViewMode.period) ...[
+            // Period View
+            _buildSummaryHeader(
+              "Custom Period",
+              "Summary for the selected range",
+              primaryGreen,
+              trailing: InkWell(
+                onTap: () => _selectDateRange(context),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: primaryGreen.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: primaryGreen.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                      const SizedBox(width: 8),
+                      Text(
+                        _startDate != null && _endDate != null
+                            ? "${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}"
+                            : "Select Range",
+                        style: const TextStyle(
+                          color: primaryGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: primaryGreen),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            _buildSummaryContent(_calculateRangeSummary(), primaryGreen),
             const SizedBox(height: 32),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Text("Activity Statistics", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 16),
-            _buildVisualBreakdown(primaryGreen, _calculate14DaySummary()),
+            _buildVisualBreakdown(primaryGreen, _calculateRangeSummary()),
           ] else ...[
             // Monthly View
             _buildSummaryHeader(
@@ -437,25 +478,26 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return _calculateSummary(filteredDays);
   }
 
-  ActivitySummary _calculate14DaySummary() {
-    // 1. Calculate the 14 eligible UTC midnight timestamps (mimicking Python logic)
-    final double now = DateTime.now().millisecondsSinceEpoch / 1000.0;
-    final int todayMidnight = (now - (now % 86400)).toInt();
+  ActivitySummary _calculateRangeSummary() {
+    if (_startDate == null || _endDate == null) return ActivitySummary();
+
+    // Normalize dates to midnights in UTC for consistent comparison
+    final startTs = DateTime.utc(_startDate!.year, _startDate!.month, _startDate!.day).millisecondsSinceEpoch ~/ 1000;
+    final endTs = DateTime.utc(_endDate!.year, _endDate!.month, _endDate!.day).millisecondsSinceEpoch ~/ 1000;
 
     final Set<int> eligibleDays = {};
-    for (int i = 0; i < 14; i++) {
-      eligibleDays.add(todayMidnight - (i * 86400));
+    // Add every day between start and end (inclusive)
+    for (int ts = startTs; ts <= endTs; ts += 86400) {
+      eligibleDays.add(ts);
     }
 
     final summary = ActivitySummary();
 
-    // 2. Iterate through activities and check against eligibleDays
     for (var day in widget.activities) {
       final dt = day.date.toUtc();
       final ts = DateTime.utc(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
 
       if (eligibleDays.contains(ts)) {
-        // Sum activities exactly like in the Daily View (handling session gaps)
         for (int i = 1; i < day.activities.length; i++) {
           final prev = day.activities[i - 1];
           final curr = day.activities[i];
@@ -470,7 +512,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             }
           }
 
-          // If this record indicates card extraction, skip the interval to the next insertion
           if (curr.card == 0) i++;
         }
       }
@@ -500,6 +541,36 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         ),
       ),
     );
+  }
+
+  Future<void> _selectDateRange(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: widget.activities.isEmpty ? DateTime(2000) : widget.activities.last.date,
+      lastDate: widget.activities.isEmpty ? DateTime.now() : widget.activities.first.date,
+      initialDateRange: _startDate != null && _endDate != null
+          ? DateTimeRange(start: _startDate!, end: _endDate!)
+          : null,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF28B52F),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+      });
+    }
   }
 
   Future<void> _selectMonth(BuildContext context) async {
@@ -882,7 +953,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             // Crew indicator
             blocks.add(pw.Positioned(
               left: labelWidth + (prevTime * hourWidth),
-              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 2,
+              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 0.5,
               child: pw.Container(
                 width: max(0.5, duration * hourWidth),
                 height: 1.5,
