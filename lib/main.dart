@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'activity_timeline.dart';
+import 'faults_view.dart';
 import 'openstreetmap.dart';
 import 'taho_exporter.dart';
 import 'taho_models.dart';
@@ -55,7 +56,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   List<DailyVehicles> vehicles = [];
   List<GnssRecord> gnssRecords = [];
   List<DailyActivities> activities = [];
-  List<Violation> violations = [];
+  List<TahoFault> vehicleFaults = [];
+  List<TahoFault> driverEvents = [];
   TahoGen2Card? gen2Card;
   TahoGen1Card? gen1Card;
   bool _isGen2View = false;
@@ -104,6 +106,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           lastDownload = gen2Card!.cardDownload.isNotEmpty ? parserG2.parseLastDownload(gen2Card!.cardDownload) : null;
           activities = gen2Card!.activitiesDATAptr.isNotEmpty ? parserG2.parseActivities(gen2Card!.activitiesDATAptr) : [];
           gnssRecords = parserG2.parseGnss(gen2Card!.GNSS);
+          vehicleFaults = parserG2.parseFaults(gen2Card!.faultsData); // 0503
+          driverEvents = parserG2.parseFaults(gen2Card!.eventsData);   // 0502
           vehicles = [];
         } else {
           // Reset view if no Gen 2 data is available
@@ -112,6 +116,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           lastDownload = null;
           activities = [];
           gnssRecords = [];
+          vehicleFaults = [];
+          driverEvents = [];
           vehicles = [];
         }
       } else {
@@ -121,6 +127,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           lastDownload = parser.parseLastDownload(gen1Card!.cardDownload);
           vehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
           activities = parser.parseActivities(gen1Card!.activitiesDATAptr);
+          vehicleFaults = parser.parseFaults(gen1Card!.faultsData); // 0503
+          driverEvents = parser.parseFaults(gen1Card!.eventsData);   // 0502
           gnssRecords = [];
         } else {
           // Reset view if no Gen 1 data is available
@@ -129,6 +137,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           lastDownload = null;
           vehicles = [];
           activities = [];
+          vehicleFaults = [];
+          driverEvents = [];
           gnssRecords = [];
         }
       }
@@ -238,7 +248,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
         driverLicense = null;
         vehicles = [];
         activities = [];
-        violations = [];
+        vehicleFaults = [];
+        driverEvents = [];
         gnssRecords = [];
         gen1Card = null;
         gen2Card = null;
@@ -549,6 +560,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
           utcOffset: _utcOffset,
           onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
           onDateTap: _selectActivityDate,
+        );
+      case 3:
+        return FaultsView(
+          vehicleFaults: vehicleFaults,
+          driverEvents: driverEvents,
         );
       case 4: return OpenStreetMapScreen(records: gnssRecords);
       default: return const SizedBox();

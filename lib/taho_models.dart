@@ -267,8 +267,6 @@ class GnssRecord {
     required this.b3,
   });
 
-  // Tvoja Python logika: st / 1000.0
-  // Specifikacija: INTEGER(-90000..90001) in INTEGER(-180000..180001)
   double get latitude => convertLat(lat);
   double get longitude => convertLon(lon);
 
@@ -297,22 +295,34 @@ class GnssRecord {
   }
 }
 
-class Violation {
-  final DateTime time;
-  final String type;
-  final String description;
+class TahoFault {
+  final int type;
+  final DateTime beginTime;
+  final DateTime endTime;
+  final int vehicleRegistrationNation;
+  final String vehicleRegistrationNumber;
 
-  Violation({required this.time, required this.type, required this.description});
+  TahoFault({
+    required this.type,
+    required this.beginTime,
+    required this.endTime,
+    required this.vehicleRegistrationNation,
+    required this.vehicleRegistrationNumber,
+  });
 }
 
 class ParsedTachoData {
   final CardId cardId;
   final List<DailyActivities> activities;
   final DriverLicense? driverLicense;
+  final List<TahoFault> faults;
+  final List<TahoFault> events;
 
   ParsedTachoData({
     required this.cardId,
     required this.activities,
     this.driverLicense,
+    this.faults = const [],
+    this.events = const [],
   });
 }

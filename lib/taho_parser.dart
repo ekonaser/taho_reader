@@ -37,27 +37,6 @@ class TahoParser {
     return val.toSigned(24);
   }
 
-  // Proper 32-bit byteswap
-  int _u32BS(Uint8List s, int o) {
-    if (o + 3 > s.length) return 0;
-    int b0 = s[o];
-    int b1 = s[o + 1];
-    int b2 = s[o + 2];
-    int b3 = s[0 + 3];
-    int val = b0  | (b1 << 8) | (b2 << 16) | (b3 << 24);
-    return val.toSigned(32);
-  }
-
-  // Proper 24-bit byteswap
-  int _u24BS(Uint8List s, int o) {
-    if (o + 3 > s.length) return 0;
-    int b0 = s[o];
-    int b1 = s[o + 1];
-    int b2 = s[o + 2];
-    int val = b0  | (b1 << 8) | (b2 << 16);
-    return val.toSigned(24);
-  }
-
   LastDownload parseLastDownload(Uint8List section) {
     if (section.length < 4) return LastDownload(lastDownload: null);
     int ts = _u32(section, 0);
@@ -134,6 +113,28 @@ class TahoParser {
     )).toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
+  List<TahoFault> parseFaults(Uint8List section) {
+    if (section.length < 24) return [];
+    final List<TahoFault> faults = [];
+    for (int i = 0; i <= section.length - 24; i += 24) {
+      int type = _u8(section, i);
+      int beginTs = _u32(section, i + 1);
+      int endTs = _u32(section, i + 5);
+
+      if (beginTs == 0 || beginTs == 0xFFFFFFFF) continue;
+
+      faults.add(TahoFault(
+        type: type,
+        beginTime: _epoch(beginTs),
+        endTime: _epoch(endTs),
+        vehicleRegistrationNation: _u8(section, i + 9),
+        vehicleRegistrationNumber: _str(section, i + 10, 14),
+      ));
+    }
+    faults.sort((a, b) => a.beginTime.compareTo(b.beginTime));
+    return faults;
+  }
+
   List<DailyActivities> parseActivities(Uint8List rawData) {
     if (rawData.length < 13780) return [];
 
@@ -193,16 +194,6 @@ class TahoParser {
 
     return result.values.toList();
   }
-
-  List<Violation> findViolations(List<DailyActivities> activities) {
-    List<Violation> violations = [];
-    for (var day in activities) {
-      // Simplified example check: more than 4.5 hours of continuous driving
-      // For this we'd need to calculate durations between activity records.
-      // This is a placeholder for the logic.
-    }
-    return violations;
-  }
 }
 
 class TahoParserG2 extends TahoParser {
@@ -225,22 +216,5 @@ class TahoParserG2 extends TahoParser {
     }
     records.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return records;
-  }
-
-  ParsedTachoData parseAll(
-    Uint8List cardSection,
-    Uint8List activitySection, {
-    Uint8List? licenseSection,
-  }) {
-    final card = parseCardId(cardSection);
-    final activities = parseActivities(activitySection);
-    final license =
-        licenseSection != null ? parseDriverLicense(licenseSection) : null;
-
-    return ParsedTachoData(
-      cardId: card,
-      activities: activities,
-      driverLicense: license,
-    );
   }
 }
