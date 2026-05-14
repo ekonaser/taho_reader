@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'activity_timeline.dart';
 import 'faults_view.dart';
+import 'logs_view.dart';
 import 'openstreetmap.dart';
 import 'taho_exporter.dart';
 import 'taho_models.dart';
@@ -54,6 +55,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
   DriverLicense? driverLicense;
   LastDownload? lastDownload;
   List<DailyVehicles> vehicles = [];
+  List<PlaceRecord> places = [];
   List<GnssRecord> gnssRecords = [];
   List<DailyActivities> activities = [];
   List<TahoFault> vehicleFaults = [];
@@ -109,6 +111,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults = parserG2.parseFaults(gen2Card!.faultsData); // 0503
           driverEvents = parserG2.parseFaults(gen2Card!.eventsData);   // 0502
           vehicles = [];
+          places = [];
         } else {
           // Reset view if no Gen 2 data is available
           cardId = null;
@@ -119,6 +122,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults = [];
           driverEvents = [];
           vehicles = [];
+          places = [];
         }
       } else {
         if (gen1Card != null) {
@@ -126,6 +130,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           driverLicense = parser.parseDriverLicense(gen1Card!.driverLicenseDATAptr);
           lastDownload = parser.parseLastDownload(gen1Card!.cardDownload);
           vehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
+          places = parser.parsePlaces(gen1Card!.places);
           activities = parser.parseActivities(gen1Card!.activitiesDATAptr);
           vehicleFaults = parser.parseFaults(gen1Card!.faultsData); // 0503
           driverEvents = parser.parseFaults(gen1Card!.eventsData);   // 0502
@@ -136,6 +141,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           driverLicense = null;
           lastDownload = null;
           vehicles = [];
+          places = [];
           activities = [];
           vehicleFaults = [];
           driverEvents = [];
@@ -527,7 +533,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           unselectedItemColor: Colors.grey,
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-            BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: 'Vehicles'),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Logs'),
             BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'Activities'),
             BottomNavigationBarItem(icon: Icon(Icons.warning_amber), label: 'Faults'),
             BottomNavigationBarItem(icon: Icon(Icons.map), label: 'GNSS'),
@@ -540,7 +546,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
   String _getTabTitle() {
     switch (_selectedTabIndex) {
       case 0: return 'Dashboard';
-      case 1: return 'Vehicle Usage';
+      case 1: return 'Logs';
       case 2: return 'Activity Timeline';
       case 3: return 'Violations';
       case 4: return 'GNSS Map';
@@ -551,7 +557,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
       case 0: return _buildHomeTab();
-      case 1: return _buildVehiclesTab();
+      case 1:
+        return LogsView(
+          vehicles: vehicles,
+          places: places,
+        );
       case 2:
         return ActivityTimeline(
           activities: activities,
