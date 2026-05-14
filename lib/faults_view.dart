@@ -145,7 +145,7 @@ class _FaultsViewState extends State<FaultsView> {
             const Divider(height: 24),
             _faultDetailRow(Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
             _faultDetailRow(Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
-            _faultDetailRow(Icons.directions_car, "Vehicle", "${fault.vehicleRegistrationNumber} (${fault.vehicleRegistrationNation})"),
+            _faultDetailRow(Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
           ],
         ),
       ),

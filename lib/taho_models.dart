@@ -295,6 +295,22 @@ class GnssRecord {
   }
 }
 
+class PlaceRecord {
+  final DateTime entryTime;
+  final int entryTypeDailyWorkPeriod;
+  final int dailyWorkPeriodCountry;
+  final int dailyWorkPeriodRegion;
+  final int vehicleOdometerValue;
+
+  PlaceRecord({
+    required this.entryTime,
+    required this.entryTypeDailyWorkPeriod,
+    required this.dailyWorkPeriodCountry,
+    required this.dailyWorkPeriodRegion,
+    required this.vehicleOdometerValue,
+  });
+}
+
 class TahoFault {
   final int type;
   final DateTime beginTime;

@@ -128,11 +128,36 @@ class TahoParser {
         beginTime: _epoch(beginTs),
         endTime: _epoch(endTs),
         vehicleRegistrationNation: _u8(section, i + 9),
-        vehicleRegistrationNumber: _str(section, i + 10, 14),
+        vehicleRegistrationNumber: _str(section, i + 11, 13),
       ));
     }
-    faults.sort((a, b) => a.beginTime.compareTo(b.beginTime));
+    // Sort newest first
+    faults.sort((a, b) => b.beginTime.compareTo(a.beginTime));
     return faults;
+  }
+
+  List<PlaceRecord> parsePlaces(Uint8List section) {
+    if (section.length < 11) return [];
+    final List<PlaceRecord> places = [];
+    // section[0] is the pointer to the newest record
+    for (int i = 1; i <= section.length - 10; i += 10) {
+      int timeTs = _u32(section, i);
+      if (timeTs == 0 || timeTs == 0xFFFFFFFF) continue;
+
+      // vehicleOdometerValue is 3 bytes (Uint24)
+      int odometer = (section[i + 7] << 16) | (section[i + 8] << 8) | section[i + 9];
+
+      places.add(PlaceRecord(
+        entryTime: _epoch(timeTs),
+        entryTypeDailyWorkPeriod: section[i + 4],
+        dailyWorkPeriodCountry: section[i + 5],
+        dailyWorkPeriodRegion: section[i + 6],
+        vehicleOdometerValue: odometer,
+      ));
+    }
+    // Sort newest first
+    places.sort((a, b) => b.entryTime.compareTo(a.entryTime));
+    return places;
   }
 
   List<DailyActivities> parseActivities(Uint8List rawData) {
