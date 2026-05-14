@@ -127,14 +127,147 @@ class _LogsViewState extends State<LogsView> {
 
   Widget _buildPlacesList() {
     return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 16),
       itemCount: widget.places.length,
-      itemBuilder: (context, index) {
-        final place = widget.places[index];
-        return ListTile(
-          title: Text("Place ${place.dailyWorkPeriodCountry}"),
-          subtitle: Text(place.entryTime.toString()),
-        );
-      },
+      itemBuilder: (context, index) => _buildPlaceCard(widget.places[index]),
     );
+  }
+
+  Widget _buildPlaceCard(PlaceRecord place) {
+    final typeInfo = _getEntryTypeInfo(place.entryTypeDailyWorkPeriod);
+    final isBegin = place.entryTypeDailyWorkPeriod % 2 == 0;
+    final iconColor = isBegin ? Colors.green : Colors.orange;
+    final icon = isBegin ? Icons.login : Icons.logout;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: iconColor, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isBegin ? "BEGIN" : "END",
+                        style: TextStyle(
+                          color: iconColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      Text(
+                        typeInfo,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
+            _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
+            _detailRow(Icons.public, "Country", _getCountryName(place.dailyWorkPeriodCountry)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text("$label: ", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  String _getCountryName(int code) {
+    switch (code) {
+      case 0: return "Undefined / Unknown";
+      case 1: return "Albania";
+      case 2: return "Andorra";
+      case 3: return "Armenia";
+      case 4: return "Austria";
+      case 5: return "Azerbaijan";
+      case 6: return "Belgium";
+      case 7: return "Bosnia and Herzegovina";
+      case 8: return "Bulgaria";
+      case 9: return "Croatia";
+      case 10: return "Cyprus";
+      case 11: return "Czech Republic";
+      case 12: return "Denmark";
+      case 13: return "Estonia";
+      case 14: return "Finland";
+      case 15: return "France";
+      case 16: return "Georgia";
+      case 17: return "Germany";
+      case 18: return "Greece";
+      case 19: return "Hungary";
+      case 20: return "Iceland";
+      case 21: return "Ireland";
+      case 22: return "Italy";
+      case 23: return "Kazakhstan";
+      case 24: return "Kosovo";
+      case 25: return "Latvia";
+      case 26: return "Liechtenstein";
+      case 27: return "Lithuania";
+      case 28: return "Luxembourg";
+      case 29: return "Malta";
+      case 30: return "Moldova";
+      case 31: return "Monaco";
+      case 32: return "Montenegro";
+      case 33: return "Netherlands";
+      case 34: return "North Macedonia";
+      case 35: return "Norway";
+      case 36: return "Poland";
+      case 37: return "Portugal";
+      case 38: return "Romania";
+      case 39: return "Russian Federation";
+      case 40: return "San Marino";
+      case 41: return "Serbia";
+      case 42: return "Slovakia";
+      case 43: return "Spain";
+      case 44: return "Sweden";
+      case 45: return "Switzerland";
+      case 46: return "Slovenia";
+      case 47: return "Türkiye";
+      case 48: return "Ukraine";
+      case 49: return "United Kingdom";
+      default: return "Unknown ($code)";
+    }
+  }
+
+  String _getEntryTypeInfo(int type) {
+    switch (type) {
+      case 0: return "Card Insertion";
+      case 1: return "Card Withdrawal";
+      case 2: return "Manual Entry (Start)";
+      case 3: return "Manual Entry (End)";
+      case 4: return "Assumed by VU (Start)";
+      case 5: return "Assumed by VU (End)";
+      default: return "Unknown Entry Type";
+    }
   }
 }
