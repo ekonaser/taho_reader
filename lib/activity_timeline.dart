@@ -26,6 +26,8 @@ class ActivityTimeline extends StatefulWidget {
   final CardId? cardId;
   final DateTime? selectedDate;
   final VoidCallback? onDateTap;
+  final VoidCallback? onPrevDay;
+  final VoidCallback? onNextDay;
   final int utcOffset;
   final ValueChanged<int> onUtcOffsetChanged;
 
@@ -35,6 +37,8 @@ class ActivityTimeline extends StatefulWidget {
     this.cardId,
     this.selectedDate,
     this.onDateTap,
+    this.onPrevDay,
+    this.onNextDay,
     required this.utcOffset,
     required this.onUtcOffsetChanged,
   });
@@ -197,7 +201,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       textAlign: TextAlign.right,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
@@ -224,6 +234,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                         ),
                       ],
                     ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left, color: primaryGreen),
+                    onPressed: widget.onPrevDay,
+                    tooltip: "Previous Day",
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right, color: primaryGreen),
+                    onPressed: widget.onNextDay,
+                    tooltip: "Next Day",
                   ),
                 ],
               ),

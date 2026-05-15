@@ -107,6 +107,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           driverLicense = gen2Card!.driverLicenseDATAptr.isNotEmpty ? parserG2.parseDriverLicense(gen2Card!.driverLicenseDATAptr) : null;
           lastDownload = gen2Card!.cardDownload.isNotEmpty ? parserG2.parseLastDownload(gen2Card!.cardDownload) : null;
           activities = gen2Card!.activitiesDATAptr.isNotEmpty ? parserG2.parseActivities(gen2Card!.activitiesDATAptr) : [];
+          activities.sort((a, b) => b.date.compareTo(a.date));
           gnssRecords = parserG2.parseGnss(gen2Card!.GNSS);
           vehicleFaults = parserG2.parseFaults(gen2Card!.faultsData); // 0503
           driverEvents = parserG2.parseFaults(gen2Card!.eventsData);   // 0502
@@ -132,6 +133,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
           places = parser.parsePlaces(gen1Card!.places);
           activities = parser.parseActivities(gen1Card!.activitiesDATAptr);
+          activities.sort((a, b) => b.date.compareTo(a.date));
           vehicleFaults = parser.parseFaults(gen1Card!.faultsData); // 0503
           driverEvents = parser.parseFaults(gen1Card!.eventsData);   // 0502
           gnssRecords = [];
@@ -459,6 +461,34 @@ class _TahoDashboardState extends State<TahoDashboard> {
     }
   }
 
+  void _jumpToActivityDay(int delta) {
+    if (activities.isEmpty) return;
+    
+    // Sort activities by date (descending: newest first)
+    final sortedActivities = List<DailyActivities>.from(activities);
+    sortedActivities.sort((a, b) => b.date.compareTo(a.date));
+
+    // Find current index
+    DateTime current = _selectedActivityDate ?? sortedActivities.first.date;
+    int index = sortedActivities.indexWhere((a) =>
+        a.date.year == current.year &&
+        a.date.month == current.month &&
+        a.date.day == current.day);
+
+    if (index == -1) index = 0;
+
+    // In a descending list: 
+    // delta -1 (Next/Newer) means index decreases
+    // delta +1 (Prev/Older) means index increases
+    int newIndex = index + delta;
+    
+    if (newIndex >= 0 && newIndex < sortedActivities.length) {
+      setState(() {
+        _selectedActivityDate = sortedActivities[newIndex].date;
+      });
+    }
+  }
+
   Future<void> _showSettings() async {
     await Navigator.push(
       context,
@@ -545,11 +575,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   String _getTabTitle() {
     switch (_selectedTabIndex) {
-      case 0: return 'Dashboard';
+      case 0: return 'Card ID';
       case 1: return 'Logs';
-      case 2: return 'Activity Timeline';
-      case 3: return 'Violations';
-      case 4: return 'GNSS Map';
+      case 2: return 'Activities';
+      case 3: return 'Faults';
+      case 4: return 'GNSS';
       default: return 'Tacho Reader';
     }
   }
@@ -570,6 +600,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           utcOffset: _utcOffset,
           onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
           onDateTap: _selectActivityDate,
+          onPrevDay: () => _jumpToActivityDay(1), // Older
+          onNextDay: () => _jumpToActivityDay(-1), // Newer
         );
       case 3:
         return FaultsView(
