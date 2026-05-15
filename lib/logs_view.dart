@@ -116,9 +116,16 @@ class _LogsViewState extends State<LogsView> {
           leading: const Icon(Icons.calendar_month, color: primaryGreen),
           children: day.vehicles.map((v) => ListTile(
             dense: true,
-            title: Text(v.registration),
-            subtitle: Text("${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}"),
-            trailing: Text("${v.endKm - v.startKm} km"),
+            title: Text(v.registration, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(
+              "${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}\n"
+              "${v.startKm} - ${v.endKm}",
+            ),
+            isThreeLine: true,
+            trailing: Text(
+              "${v.endKm - v.startKm} km",
+              style: const TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
+            ),
           )).toList(),
         ),
       ),
@@ -182,7 +189,7 @@ class _LogsViewState extends State<LogsView> {
             const Divider(height: 24),
             _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
             _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
-            _detailRow(Icons.public, "Country", _getCountryName(place.dailyWorkPeriodCountry)),
+            _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
           ],
         ),
       ),
@@ -203,58 +210,63 @@ class _LogsViewState extends State<LogsView> {
     );
   }
 
-  String _getCountryName(int code) {
+  String _getCountryCode(int code) {
     switch (code) {
-      case 0: return "Undefined / Unknown";
-      case 1: return "Albania";
-      case 2: return "Andorra";
-      case 3: return "Armenia";
-      case 4: return "Austria";
-      case 5: return "Azerbaijan";
-      case 6: return "Belgium";
-      case 7: return "Bosnia and Herzegovina";
-      case 8: return "Bulgaria";
-      case 9: return "Croatia";
-      case 10: return "Cyprus";
-      case 11: return "Czech Republic";
-      case 12: return "Denmark";
-      case 13: return "Estonia";
-      case 14: return "Finland";
-      case 15: return "France";
-      case 16: return "Georgia";
-      case 17: return "Germany";
-      case 18: return "Greece";
-      case 19: return "Hungary";
-      case 20: return "Iceland";
-      case 21: return "Ireland";
-      case 22: return "Italy";
-      case 23: return "Kazakhstan";
-      case 24: return "Kosovo";
-      case 25: return "Latvia";
-      case 26: return "Liechtenstein";
-      case 27: return "Lithuania";
-      case 28: return "Luxembourg";
-      case 29: return "Malta";
-      case 30: return "Moldova";
-      case 31: return "Monaco";
-      case 32: return "Montenegro";
-      case 33: return "Netherlands";
-      case 34: return "North Macedonia";
-      case 35: return "Norway";
-      case 36: return "Poland";
-      case 37: return "Portugal";
-      case 38: return "Romania";
-      case 39: return "Russian Federation";
-      case 40: return "San Marino";
-      case 41: return "Serbia";
-      case 42: return "Slovakia";
-      case 43: return "Spain";
-      case 44: return "Sweden";
-      case 45: return "Switzerland";
-      case 46: return "Slovenia";
-      case 47: return "Türkiye";
-      case 48: return "Ukraine";
-      case 49: return "United Kingdom";
+      case 1: return "A";
+      case 2: return "AL";
+      case 3: return "AND";
+      case 4: return "ARM";
+      case 5: return "AZ";
+      case 6: return "B";
+      case 7: return "BG";
+      case 8: return "BIH";
+      case 9: return "BY";
+      case 10: return "CH";
+      case 11: return "CY";
+      case 12: return "CZ";
+      case 13: return "D";
+      case 14: return "DK";
+      case 15: return "E";
+      case 16: return "EC";
+      case 17: return "EST";
+      case 18: return "F";
+      case 19: return "FIN";
+      case 20: return "FL";
+      case 21: return "FR";
+      case 22: return "GE";
+      case 23: return "GR";
+      case 24: return "H";
+      case 25: return "HR";
+      case 26: return "I";
+      case 27: return "IRL";
+      case 28: return "IS";
+      case 29: return "KZ";
+      case 30: return "L";
+      case 31: return "LT";
+      case 32: return "LV";
+      case 33: return "M";
+      case 34: return "MC";
+      case 35: return "MD";
+      case 36: return "MK";
+      case 37: return "N";
+      case 38: return "NL";
+      case 39: return "P";
+      case 40: return "PL";
+      case 41: return "RO";
+      case 42: return "RSM";
+      case 43: return "RUS";
+      case 44: return "S";
+      case 45: return "SK";
+      case 46: return "SLO";
+      case 47: return "TM";
+      case 48: return "TR";
+      case 49: return "UA";
+      case 50: return "UK";
+      case 51: return "UNK";
+      case 52: return "V";
+      case 53: return "WLD";
+      case 54: return "YU";
+      case 255: return "EUR";
       default: return "Unknown ($code)";
     }
   }
