@@ -134,6 +134,16 @@ class VehicleRecordG2 {
   });
 }
 
+class DailyVehiclesG2 {
+  final DateTime date;
+  final List<VehicleRecordG2> vehicles;
+
+  DailyVehiclesG2({
+    required this.date,
+    required this.vehicles,
+  });
+}
+
 class DailyVehicles {
   final DateTime date;
   final List<VehicleRecord> vehicles;

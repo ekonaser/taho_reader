@@ -242,4 +242,75 @@ class TahoParserG2 extends TahoParser {
     records.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return records;
   }
+
+  List<DailyVehiclesG2> parseVehiclesG2(Uint8List section) {
+    if (section.length < 48) return [];
+    Map<String, List<VehicleRecordG2>> grouped = {};
+    // first two bytes are pointers
+    for (int i = 2; i <= section.length - 48; i += 48) {
+      int odoBegin = (section[i] << 16) | (section[i + 1] << 8) | section[i + 2];
+      int odoEnd = (section[i + 3] << 16) | (section[i + 4] << 8) | section[i + 5];
+      int sTimeRaw = _u32(section, i + 6);
+      int eTimeRaw = _u32(section, i + 10);
+      int regNation = _u8(section, i + 14);
+      String regNum = _str(section, i + 16, 14);
+      int blockCounter = _u16(section, i + 29);
+      String vin = _str(section, i + 31, 17);
+
+      if (sTimeRaw > 0 && sTimeRaw < 0xFFFFFFFF) {
+        DateTime sTime = _epoch(sTimeRaw);
+        if (sTime.year > 2000 && sTime.year < 2100) {
+          String dateKey = sTime.toLocal().toString().split(' ').first;
+          grouped.putIfAbsent(dateKey, () => []);
+          grouped[dateKey]!.add(VehicleRecordG2(
+            odometerBegin: odoBegin,
+            odometerEnd: odoEnd,
+            firstUse: sTime,
+            lastUse: _epoch(eTimeRaw),
+            registrationNation: regNation,
+            registrationNumber: regNum,
+            vuDataBlockCounter: blockCounter,
+            vin: vin,
+          ));
+        }
+      }
+    }
+    for (var list in grouped.values) {
+      list.sort((a, b) => b.firstUse.compareTo(a.firstUse));
+    }
+    return grouped.entries
+        .map((e) => DailyVehiclesG2(
+              date: DateTime.parse(e.key),
+              vehicles: e.value,
+            ))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  List<PlaceRecordG2> parsePlacesG2(Uint8List section) {
+    if (section.length < 22) return [];
+    final List<PlaceRecordG2> places = [];
+    // first two bytes are pointers
+    for (int i = 2; i <= section.length - 21; i += 21) {
+      int entryTs = _u32(section, i);
+      if (entryTs == 0 || entryTs == 0xFFFFFFFF) continue;
+
+      int odo = (section[i + 7] << 16) | (section[i + 8] << 8) | section[i + 9];
+      int tsRaw = _u32(section, i + 10);
+
+      places.add(PlaceRecordG2(
+        entryTime: _epoch(entryTs),
+        entryTypeDailyWorkPeriod: _u8(section, i + 4),
+        dailyWorkPeriodCountry: _u8(section, i + 5),
+        dailyWorkPeriodRegion: _u8(section, i + 6),
+        vehicleOdometerValue: odo,
+        timestamp: _epoch(tsRaw),
+        gnssAccuracy: _u8(section, i + 14),
+        lat: _u24(section, i + 15),
+        lon: _u24(section, i + 18),
+      ));
+    }
+    places.sort((a, b) => b.entryTime.compareTo(a.entryTime));
+    return places;
+  }
 }

@@ -4,11 +4,17 @@ import 'taho_models.dart';
 class LogsView extends StatefulWidget {
   final List<DailyVehicles> vehicles;
   final List<PlaceRecord> places;
+  final List<DailyVehiclesG2> vehiclesG2;
+  final List<PlaceRecordG2> placesG2;
+  final Function(double lat, double lon)? onJumpToMap;
 
   const LogsView({
     super.key,
     required this.vehicles,
     required this.places,
+    required this.vehiclesG2,
+    required this.placesG2,
+    this.onJumpToMap,
   });
 
   @override
@@ -54,15 +60,22 @@ class _LogsViewState extends State<LogsView> {
         ),
         Expanded(
           child: _viewMode == _LogViewMode.vehicles
-              ? (widget.vehicles.isEmpty
-                  ? _buildEmptyState("No vehicle data found.")
-                  : ListView.builder(
-                      itemCount: widget.vehicles.length,
-                      itemBuilder: (context, index) => _buildDayCard(widget.vehicles[index]),
-                    ))
-              : (widget.places.isEmpty
-                  ? _buildEmptyState("No place records found.")
-                  : _buildPlacesList()),
+              ? (widget.vehiclesG2.isNotEmpty
+                  ? ListView.builder(
+                      itemCount: widget.vehiclesG2.length,
+                      itemBuilder: (context, index) => _buildDayCardG2(widget.vehiclesG2[index]),
+                    )
+                  : widget.vehicles.isEmpty
+                      ? _buildEmptyState("No vehicle data found.")
+                      : ListView.builder(
+                          itemCount: widget.vehicles.length,
+                          itemBuilder: (context, index) => _buildDayCard(widget.vehicles[index]),
+                        ))
+              : (widget.placesG2.isNotEmpty
+                  ? _buildPlacesListG2()
+                  : widget.places.isEmpty
+                      ? _buildEmptyState("No place records found.")
+                      : _buildPlacesList()),
         ),
       ],
     );
@@ -132,11 +145,74 @@ class _LogsViewState extends State<LogsView> {
     );
   }
 
+  Widget _buildDayCardG2(DailyVehiclesG2 day) {
+    const primaryGreen = Color(0xFF28B52F);
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      color: Colors.white,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          shape: const Border(),
+          collapsedShape: const Border(),
+          title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
+          leading: const Icon(Icons.calendar_month, color: primaryGreen),
+          children: day.vehicles.map((v) => ListTile(
+            dense: true,
+            title: Row(
+              children: [
+                Text(v.registrationNumber, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(4)),
+                  child: Text(_getCountryCode(v.registrationNation), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${v.firstUse.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.lastUse.toLocal().toString().split(' ')[1].substring(0, 5)}\n"
+                  "${v.odometerBegin} - ${v.odometerEnd} km",
+                ),
+                Text("VIN: ${v.vin}", style: TextStyle(fontSize: 11, color: Colors.grey[600], fontFamily: 'monospace')),
+              ],
+            ),
+            isThreeLine: true,
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  "${v.odometerEnd - v.odometerBegin} km",
+                  style: const TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
+                ),
+                Text("B#${v.vuDataBlockCounter}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
+            ),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlacesList() {
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 16),
       itemCount: widget.places.length,
       itemBuilder: (context, index) => _buildPlaceCard(widget.places[index]),
+    );
+  }
+
+  Widget _buildPlacesListG2() {
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: widget.placesG2.length,
+      itemBuilder: (context, index) => _buildPlaceCardG2(widget.placesG2[index]),
     );
   }
 
@@ -194,6 +270,119 @@ class _LogsViewState extends State<LogsView> {
         ),
       ),
     );
+  }
+
+  Widget _buildPlaceCardG2(PlaceRecordG2 place) {
+    final typeInfo = _getEntryTypeInfo(place.entryTypeDailyWorkPeriod);
+    final isBegin = place.entryTypeDailyWorkPeriod % 2 == 0;
+    final iconColor = isBegin ? Colors.green : Colors.orange;
+    final icon = isBegin ? Icons.login : Icons.logout;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: iconColor, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            isBegin ? "BEGIN" : "END",
+                            style: TextStyle(
+                              color: iconColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                            child: const Text("G2", style: TextStyle(color: Colors.blue, fontSize: 9, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        typeInfo,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
+            _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
+            _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
+            if (place.lat != 0x7FFFFF && place.lon != 0x7FFFFF) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "GNSS: ${place.latitude.toStringAsFixed(5)}, ${place.longitude.toStringAsFixed(5)}",
+                          style: const TextStyle(fontSize: 13, color: Colors.blue, fontWeight: FontWeight.w500),
+                        ),
+                        Text(
+                          "Accuracy: ${place.gnssAccuracy}m",
+                          style: TextStyle(fontSize: 11, color: _getAccuracyColor(place.gnssAccuracy)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (widget.onJumpToMap != null) {
+                        widget.onJumpToMap!(place.latitude, place.longitude);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("GNSS location tapped. Use the GNSS tab to see all points.")),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.map, size: 18),
+                    label: const Text("MAP"),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getAccuracyColor(int accuracy) {
+    if (accuracy <= 10) return Colors.green;
+    if (accuracy <= 30) return Colors.orange;
+    return Colors.red;
   }
 
   Widget _detailRow(IconData icon, String label, String value) {

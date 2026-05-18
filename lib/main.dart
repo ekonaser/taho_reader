@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'activity_timeline.dart';
 import 'faults_view.dart';
@@ -56,6 +57,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   LastDownload? lastDownload;
   List<DailyVehicles> vehicles = [];
   List<PlaceRecord> places = [];
+  List<DailyVehiclesG2> vehiclesG2 = [];
+  List<PlaceRecordG2> placesG2 = [];
   List<GnssRecord> gnssRecords = [];
   List<DailyActivities> activities = [];
   List<TahoFault> vehicleFaults = [];
@@ -67,6 +70,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   bool isLoading = false;
   int _selectedTabIndex = 0;
   int _utcOffset = 0;
+  LatLng? _mapInitialCenter;
+  double? _mapInitialZoom;
 
   final TahoReader _tahoReader = TahoReader();
   static const primaryGreen = Color(0xFF28B52F);
@@ -101,6 +106,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
     final parserG2 = TahoParserG2();
 
     setState(() {
+      _mapInitialCenter = null;
+      _mapInitialZoom = null;
+
       if (_isGen2View) {
         if (gen2Card != null) {
           cardId = gen2Card!.idData.isNotEmpty ? parserG2.parseCardId(gen2Card!.idData) : null;
@@ -111,6 +119,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           gnssRecords = parserG2.parseGnss(gen2Card!.GNSS);
           vehicleFaults = parserG2.parseFaults(gen2Card!.faultsData); // 0503
           driverEvents = parserG2.parseFaults(gen2Card!.eventsData);   // 0502
+          vehiclesG2 = parserG2.parseVehiclesG2(gen2Card!.vehiclesDATAptr);
+          placesG2 = parserG2.parsePlacesG2(gen2Card!.places);
           vehicles = [];
           places = [];
         } else {
@@ -124,6 +134,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           driverEvents = [];
           vehicles = [];
           places = [];
+          vehiclesG2 = [];
+          placesG2 = [];
         }
       } else {
         if (gen1Card != null) {
@@ -137,6 +149,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults = parser.parseFaults(gen1Card!.faultsData); // 0503
           driverEvents = parser.parseFaults(gen1Card!.eventsData);   // 0502
           gnssRecords = [];
+          vehiclesG2 = [];
+          placesG2 = [];
         } else {
           // Reset view if no Gen 1 data is available
           cardId = null;
@@ -148,6 +162,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults = [];
           driverEvents = [];
           gnssRecords = [];
+          vehiclesG2 = [];
+          placesG2 = [];
         }
       }
     });
@@ -255,12 +271,17 @@ class _TahoDashboardState extends State<TahoDashboard> {
         cardId = null;
         driverLicense = null;
         vehicles = [];
+        places = [];
+        vehiclesG2 = [];
+        placesG2 = [];
         activities = [];
         vehicleFaults = [];
         driverEvents = [];
         gnssRecords = [];
         gen1Card = null;
         gen2Card = null;
+        _mapInitialCenter = null;
+        _mapInitialZoom = null;
       });
 
       try {
@@ -557,7 +578,16 @@ class _TahoDashboardState extends State<TahoDashboard> {
           : _buildTabContent(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedTabIndex,
-          onTap: (index) => setState(() => _selectedTabIndex = index),
+          onTap: (index) {
+            setState(() {
+              _selectedTabIndex = index;
+              // Clear jump target if navigating away from GNSS tab
+              if (index != 4) {
+                _mapInitialCenter = null;
+                _mapInitialZoom = null;
+              }
+            });
+          },
           type: BottomNavigationBarType.fixed,
           selectedItemColor: primaryGreen,
           unselectedItemColor: Colors.grey,
@@ -591,6 +621,15 @@ class _TahoDashboardState extends State<TahoDashboard> {
         return LogsView(
           vehicles: vehicles,
           places: places,
+          vehiclesG2: vehiclesG2,
+          placesG2: placesG2,
+          onJumpToMap: (lat, lon) {
+            setState(() {
+              _mapInitialCenter = LatLng(lat, lon);
+              _mapInitialZoom = 15.0;
+              _selectedTabIndex = 4; // GNSS Tab
+            });
+          },
         );
       case 2:
         return ActivityTimeline(
@@ -608,7 +647,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults: vehicleFaults,
           driverEvents: driverEvents,
         );
-      case 4: return OpenStreetMapScreen(records: gnssRecords);
+      case 4:
+        return OpenStreetMapScreen(
+          key: ValueKey(_mapInitialCenter),
+          records: gnssRecords,
+          initialCenter: _mapInitialCenter,
+          initialZoom: _mapInitialZoom,
+        );
       default: return const SizedBox();
     }
   }

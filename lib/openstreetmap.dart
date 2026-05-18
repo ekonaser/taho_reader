@@ -5,22 +5,36 @@ import 'taho_models.dart';
 
 class OpenStreetMapScreen extends StatefulWidget {
   final List<GnssRecord> records;
-  const OpenStreetMapScreen({super.key, required this.records});
+  final LatLng? initialCenter;
+  final double? initialZoom;
+
+  const OpenStreetMapScreen({
+    super.key,
+    required this.records,
+    this.initialCenter,
+    this.initialZoom,
+  });
 
   @override
   State<OpenStreetMapScreen> createState() => _OpenStreetMapScreenState();
 }
 
 class _OpenStreetMapScreenState extends State<OpenStreetMapScreen> {
-  final MapController _mapController = MapController();
+  late final MapController _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapController = MapController();
+  }
 
   @override
   Widget build(BuildContext context) {
     const primaryGreen = Color(0xFF28B52F);
     
-    // Center na sredino Evrope in nizek zoom, da se vidi celotna celina
-    const LatLng center = LatLng(50.0, 10.0);
-    const double zoom = 3.5;
+    // Center na sredino Evrope in nizek zoom, če ni podano drugače
+    final LatLng center = widget.initialCenter ?? const LatLng(50.0, 10.0);
+    final double zoom = widget.initialZoom ?? (widget.initialCenter != null ? 13.0 : 3.5);
 
     return Scaffold(
       body: Stack(
