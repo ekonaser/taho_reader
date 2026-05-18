@@ -267,10 +267,9 @@ class _LogsViewState extends State<LogsView> {
       case 52: name = "MNE"; break;
       case 53: name = "SRB"; break;
       case 54: name = "UZ"; break;
-      case 55: name = "UNK"; break; // currently unknown not the actual value 55
       case 253: name = "EC"; break;
       case 254: name = "EUR"; break;
-      case 255: name = "WLD"; break;
+      case 255: name = "WLD"; break; // apparently UNK has same value as WLD
       default:
         return "Unknown ($code)";
     }

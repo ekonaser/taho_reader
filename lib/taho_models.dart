@@ -112,6 +112,28 @@ class VehicleRecord {
   });
 }
 
+class VehicleRecordG2 {
+  final int odometerBegin;
+  final int odometerEnd;
+  final DateTime firstUse;
+  final DateTime lastUse;
+  final int registrationNation;
+  final String registrationNumber;
+  final int vuDataBlockCounter;
+  final String vin;
+
+  VehicleRecordG2({
+    required this.odometerBegin,
+    required this.odometerEnd,
+    required this.firstUse,
+    required this.lastUse,
+    required this.registrationNation,
+    required this.registrationNumber,
+    required this.vuDataBlockCounter,
+    required this.vin,
+  });
+}
+
 class DailyVehicles {
   final DateTime date;
   final List<VehicleRecord> vehicles;
@@ -309,6 +331,33 @@ class PlaceRecord {
     required this.dailyWorkPeriodRegion,
     required this.vehicleOdometerValue,
   });
+}
+
+class PlaceRecordG2 {
+  final DateTime entryTime;
+  final int entryTypeDailyWorkPeriod;
+  final int dailyWorkPeriodCountry;
+  final int dailyWorkPeriodRegion;
+  final int vehicleOdometerValue;
+  final DateTime timestamp;
+  final int gnssAccuracy;
+  final int lat;
+  final int lon;
+
+  PlaceRecordG2({
+    required this.entryTime,
+    required this.entryTypeDailyWorkPeriod,
+    required this.dailyWorkPeriodCountry,
+    required this.dailyWorkPeriodRegion,
+    required this.vehicleOdometerValue,
+    required this.timestamp,
+    required this.gnssAccuracy,
+    required this.lat,
+    required this.lon,
+  });
+
+  double get latitude => convertLat(lat);
+  double get longitude => convertLon(lon);
 }
 
 class TahoFault {
