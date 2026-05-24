@@ -28,7 +28,8 @@ class _LogsViewState extends State<LogsView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF28B52F);
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
 
     return Column(
       children: [
@@ -37,7 +38,7 @@ class _LogsViewState extends State<LogsView> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey[200],
+              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -46,13 +47,13 @@ class _LogsViewState extends State<LogsView> {
                   "Vehicles",
                   _viewMode == _LogViewMode.vehicles,
                   () => setState(() => _viewMode = _LogViewMode.vehicles),
-                  primaryGreen
+                  primaryColor
                 ),
                 _buildToggleItem(
                   "Places",
                   _viewMode == _LogViewMode.places,
                   () => setState(() => _viewMode = _LogViewMode.places),
-                  primaryGreen
+                  primaryColor
                 ),
               ],
             ),
@@ -90,21 +91,22 @@ class _LogsViewState extends State<LogsView> {
     );
   }
 
-  Widget _buildToggleItem(String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
+  Widget _buildToggleItem(String label, bool isSelected, VoidCallback onTap, Color primaryColor) {
+    final theme = Theme.of(context);
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? primaryGreen : Colors.transparent,
+            color: isSelected ? primaryColor : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[600],
+              color: isSelected ? Colors.white : theme.colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -114,19 +116,20 @@ class _LogsViewState extends State<LogsView> {
   }
 
   Widget _buildDayCard(DailyVehicles day) {
-    const primaryGreen = Color(0xFF28B52F);
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           shape: const Border(),
           collapsedShape: const Border(),
           title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
-          leading: const Icon(Icons.calendar_month, color: primaryGreen),
+          leading: Icon(Icons.calendar_month, color: primaryColor),
           children: day.vehicles.map((v) => ListTile(
             dense: true,
             title: Text(v.registration, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -137,7 +140,7 @@ class _LogsViewState extends State<LogsView> {
             isThreeLine: true,
             trailing: Text(
               "${v.endKm - v.startKm} km",
-              style: const TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
+              style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
             ),
           )).toList(),
         ),
@@ -146,19 +149,20 @@ class _LogsViewState extends State<LogsView> {
   }
 
   Widget _buildDayCardG2(DailyVehiclesG2 day) {
-    const primaryGreen = Color(0xFF28B52F);
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           shape: const Border(),
           collapsedShape: const Border(),
           title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
-          leading: const Icon(Icons.calendar_month, color: primaryGreen),
+          leading: Icon(Icons.calendar_month, color: primaryColor),
           children: day.vehicles.map((v) => ListTile(
             dense: true,
             title: Row(
@@ -167,7 +171,7 @@ class _LogsViewState extends State<LogsView> {
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(4)),
+                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
                   child: Text(_getCountryCode(v.registrationNation), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
               ],
@@ -179,7 +183,7 @@ class _LogsViewState extends State<LogsView> {
                   "${v.firstUse.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.lastUse.toLocal().toString().split(' ')[1].substring(0, 5)}\n"
                   "${v.odometerBegin} - ${v.odometerEnd} km",
                 ),
-                Text("VIN: ${v.vin}", style: TextStyle(fontSize: 11, color: Colors.grey[600], fontFamily: 'monospace')),
+                Text("VIN: ${v.vin}", style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, fontFamily: 'monospace')),
               ],
             ),
             isThreeLine: true,
@@ -189,9 +193,9 @@ class _LogsViewState extends State<LogsView> {
               children: [
                 Text(
                   "${v.odometerEnd - v.odometerBegin} km",
-                  style: const TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
                 ),
-                Text("B#${v.vuDataBlockCounter}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                Text("B#${v.vuDataBlockCounter}", style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
           )).toList(),
@@ -217,6 +221,7 @@ class _LogsViewState extends State<LogsView> {
   }
 
   Widget _buildPlaceCard(PlaceRecord place) {
+    final theme = Theme.of(context);
     final typeInfo = _getEntryTypeInfo(place.entryTypeDailyWorkPeriod);
     final isBegin = place.entryTypeDailyWorkPeriod % 2 == 0;
     final iconColor = isBegin ? Colors.green : Colors.orange;
@@ -226,7 +231,7 @@ class _LogsViewState extends State<LogsView> {
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -258,11 +263,11 @@ class _LogsViewState extends State<LogsView> {
                 ),
                 Text(
                   "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            const Divider(height: 24),
+            Divider(height: 24, color: theme.dividerColor.withOpacity(0.1)),
             _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
             _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
             _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
@@ -273,6 +278,7 @@ class _LogsViewState extends State<LogsView> {
   }
 
   Widget _buildPlaceCardG2(PlaceRecordG2 place) {
+    final theme = Theme.of(context);
     final typeInfo = _getEntryTypeInfo(place.entryTypeDailyWorkPeriod);
     final isBegin = place.entryTypeDailyWorkPeriod % 2 == 0;
     final iconColor = isBegin ? Colors.green : Colors.orange;
@@ -282,7 +288,7 @@ class _LogsViewState extends State<LogsView> {
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -324,11 +330,11 @@ class _LogsViewState extends State<LogsView> {
                 ),
                 Text(
                   "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            const Divider(height: 24),
+            Divider(height: 24, color: theme.dividerColor.withOpacity(0.1)),
             _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
             _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
             _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
@@ -386,13 +392,14 @@ class _LogsViewState extends State<LogsView> {
   }
 
   Widget _detailRow(IconData icon, String label, String value) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey[600]),
+          Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 8),
-          Text("$label: ", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+          Text("$label: ", style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 13)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
         ],
       ),

@@ -280,9 +280,9 @@ class TahoParserG2 extends TahoParser {
     }
     return grouped.entries
         .map((e) => DailyVehiclesG2(
-              date: DateTime.parse(e.key),
-              vehicles: e.value,
-            ))
+      date: DateTime.parse(e.key),
+      vehicles: e.value,
+    ))
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
   }

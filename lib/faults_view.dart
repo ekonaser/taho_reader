@@ -22,7 +22,9 @@ class _FaultsViewState extends State<FaultsView> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF28B52F);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final primaryGreen = theme.primaryColor;
     
     return Column(
       children: [
@@ -31,18 +33,20 @@ class _FaultsViewState extends State<FaultsView> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey[200],
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
                 _buildToggleItem(
+                  context,
                   "Vehicle", 
                   _viewMode == _FaultViewMode.vehicle, 
                   () => setState(() => _viewMode = _FaultViewMode.vehicle), 
                   primaryGreen
                 ),
                 _buildToggleItem(
+                  context,
                   "Driver", 
                   _viewMode == _FaultViewMode.driver, 
                   () => setState(() => _viewMode = _FaultViewMode.driver), 
@@ -55,34 +59,35 @@ class _FaultsViewState extends State<FaultsView> {
         Expanded(
           child: _viewMode == _FaultViewMode.vehicle
               ? (widget.vehicleFaults.isEmpty
-                  ? _buildEmptyState("No technical faults found.")
+                  ? _buildEmptyState(context, "No technical faults found.")
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount: widget.vehicleFaults.length,
-                      itemBuilder: (context, index) => _buildFaultCard(widget.vehicleFaults[index]),
+                      itemBuilder: (context, index) => _buildFaultCard(context, widget.vehicleFaults[index]),
                     ))
               : (widget.driverEvents.isEmpty
-                  ? _buildEmptyState("No driver events found.")
+                  ? _buildEmptyState(context, "No driver events found.")
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount: widget.driverEvents.length,
-                      itemBuilder: (context, index) => _buildFaultCard(widget.driverEvents[index]),
+                      itemBuilder: (context, index) => _buildFaultCard(context, widget.driverEvents[index]),
                     )),
         ),
       ],
     );
   }
 
-  Widget _buildEmptyState(String message) {
+  Widget _buildEmptyState(BuildContext context, String message) {
     return Center(
       child: Text(
         message,
-        style: const TextStyle(color: Colors.grey),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     );
   }
 
-  Widget _buildToggleItem(String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
+  Widget _buildToggleItem(BuildContext context, String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -92,14 +97,14 @@ class _FaultsViewState extends State<FaultsView> {
             color: isSelected ? primaryGreen : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             boxShadow: isSelected
-                ? [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))]
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))]
                 : null,
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[600],
+              color: isSelected ? Colors.white : colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -108,7 +113,9 @@ class _FaultsViewState extends State<FaultsView> {
     );
   }
 
-  Widget _buildFaultCard(TahoFault fault) {
+  Widget _buildFaultCard(BuildContext context, TahoFault fault) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final title = _getFaultTitle(fault.type);
     final isSecurity = fault.type >= 0x10 && fault.type <= 0x2F;
     final isFault = fault.type >= 0x30;
@@ -120,7 +127,7 @@ class _FaultsViewState extends State<FaultsView> {
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: colorScheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -133,34 +140,35 @@ class _FaultsViewState extends State<FaultsView> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface),
                   ),
                 ),
                 Text(
                   "0x${fault.type.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const Divider(height: 24),
-            _faultDetailRow(Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
-            _faultDetailRow(Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
-            _faultDetailRow(Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
+            _faultDetailRow(context, Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
+            _faultDetailRow(context, Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
+            _faultDetailRow(context, Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
           ],
         ),
       ),
     );
   }
 
-  Widget _faultDetailRow(IconData icon, String label, String value) {
+  Widget _faultDetailRow(BuildContext context, IconData icon, String label, String value) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey[600]),
+          Icon(icon, size: 16, color: colorScheme.onSurfaceVariant),
           const SizedBox(width: 8),
-          Text("$label: ", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+          Text("$label: ", style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: colorScheme.onSurface)),
         ],
       ),
     );

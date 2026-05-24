@@ -26,15 +26,33 @@ class TahoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Tacho Reader',
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system,
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: const Color(0xFF28B52F),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF28B52F),
           primary: const Color(0xFF28B52F),
+          surface: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF28B52F),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF28B52F),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF28B52F),
+          brightness: Brightness.dark,
+          primary: const Color(0xFF28B52F),
+          surface: const Color(0xFF121212),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E1E1E),
           foregroundColor: Colors.white,
           elevation: 0,
         ),
@@ -702,12 +720,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   Widget _buildIdCard() {
     final id = cardId!;
+    final theme = Theme.of(context);
     return Container(
       width: double.infinity, margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-        border: Border.all(color: primaryGreen.withOpacity(0.2)),
+        color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(color: primaryGreen.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -728,18 +747,19 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Widget _idRow(IconData icon, String label, String value) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
+            padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryGreen.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: Icon(icon, size: 18, color: primaryGreen),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-            Text(value.isEmpty ? "/" : value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+            Text(value.isEmpty ? "/" : value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: theme.colorScheme.onSurface)),
           ])),
         ],
       ),
@@ -747,12 +767,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Widget _buildDayCard(DailyVehicles day, int index) {
+    final theme = Theme.of(context);
     return Card(
       elevation: 2, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           shape: const Border(),
           collapsedShape: const Border(),

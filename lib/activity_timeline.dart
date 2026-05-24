@@ -71,7 +71,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
   }
 
-  Widget _buildToggleItem(String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
+  Widget _buildToggleItem(BuildContext context, String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -88,7 +89,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[600],
+              color: isSelected ? Colors.white : colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -99,13 +100,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
   @override
   Widget build(BuildContext context) {
-    const primaryGreen = Color(0xFF28B52F);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final primaryGreen = theme.primaryColor;
     final double totalWidth = _hourWidth * 27;
 
     if (widget.activities.isEmpty) {
-      return const Center(
+      return Center(
           child: Text("No activity data found.\nUpload a file or read a card.",
-              textAlign: TextAlign.center));
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colorScheme.onSurfaceVariant)));
     }
 
     // Find the day to display in Daily view
@@ -130,14 +134,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey[200],
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  _buildToggleItem("Daily", _viewMode == _ViewMode.daily, () => setState(() => _viewMode = _ViewMode.daily), primaryGreen),
-                  _buildToggleItem("Periods", _viewMode == _ViewMode.period, () => setState(() => _viewMode = _ViewMode.period), primaryGreen),
-                  _buildToggleItem("Monthly", _viewMode == _ViewMode.monthly, () => setState(() => _viewMode = _ViewMode.monthly), primaryGreen),
+                  _buildToggleItem(context, "Daily", _viewMode == _ViewMode.daily, () => setState(() => _viewMode = _ViewMode.daily), primaryGreen),
+                  _buildToggleItem(context, "Periods", _viewMode == _ViewMode.period, () => setState(() => _viewMode = _ViewMode.period), primaryGreen),
+                  _buildToggleItem(context, "Monthly", _viewMode == _ViewMode.monthly, () => setState(() => _viewMode = _ViewMode.monthly), primaryGreen),
                 ],
               ),
             ),
@@ -148,10 +152,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       "Daily Activity",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -164,11 +168,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.calendar_month, size: 16, color: primaryGreen),
+                          Icon(Icons.calendar_month, size: 16, color: primaryGreen),
                           const SizedBox(width: 4),
                           Text(
                             day.date.toLocal().toString().split(' ').first,
-                            style: const TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -181,7 +185,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
                 children: [
-                  const Icon(Icons.zoom_out, size: 18, color: Colors.grey),
+                  Icon(Icons.zoom_out, size: 18, color: colorScheme.onSurfaceVariant),
                   Expanded(
                     child: Slider(
                       value: _hourWidth,
@@ -191,13 +195,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       onChanged: (val) => setState(() => _hourWidth = val),
                     ),
                   ),
-                  const Icon(Icons.zoom_in, size: 18, color: Colors.grey),
+                  Icon(Icons.zoom_in, size: 18, color: colorScheme.onSurfaceVariant),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 42,
                     child: Text(
                       "${(_hourWidth / 70.0).toStringAsFixed(1)}x",
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                       textAlign: TextAlign.right,
                     ),
                   ),
@@ -211,7 +215,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.1),
+                      color: colorScheme.onSurface.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -237,12 +241,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.chevron_left, color: primaryGreen),
+                    icon: Icon(Icons.chevron_left, color: primaryGreen),
                     onPressed: widget.onPrevDay,
                     tooltip: "Previous Day",
                   ),
                   IconButton(
-                    icon: const Icon(Icons.chevron_right, color: primaryGreen),
+                    icon: Icon(Icons.chevron_right, color: primaryGreen),
                     onPressed: widget.onNextDay,
                     tooltip: "Next Day",
                   ),
@@ -266,7 +270,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                           height: double.infinity,
                           decoration: BoxDecoration(
                             border: Border(
-                              left: BorderSide(color: Colors.grey.withValues(alpha: 0.3), width: 1),
+                              left: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1),
                             ),
                           ),
                           child: Stack(
@@ -278,9 +282,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                                   padding: const EdgeInsets.only(left: 4, bottom: 8),
                                   child: Text(
                                     "${(h % 24).toString().padLeft(2, '0')}:00",
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 10,
-                                      color: Colors.grey,
+                                      color: colorScheme.onSurfaceVariant,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -312,12 +316,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     "Activity Log",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.picture_as_pdf, color: primaryGreen),
+                    icon: Icon(Icons.picture_as_pdf, color: primaryGreen),
                     onPressed: () => _showExportOptions(day, primaryGreen),
                     tooltip: "Export to PDF",
                   ),
@@ -351,19 +355,19 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                      Icon(Icons.calendar_month, size: 20, color: primaryGreen),
                       const SizedBox(width: 8),
                       Text(
                         _startDate != null && _endDate != null
                             ? "${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}"
                             : "Select Range",
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: primaryGreen,
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
                       ),
-                      const Icon(Icons.arrow_drop_down, color: primaryGreen),
+                      Icon(Icons.arrow_drop_down, color: primaryGreen),
                     ],
                   ),
                 ),
@@ -400,17 +404,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                      Icon(Icons.calendar_month, size: 20, color: primaryGreen),
                       const SizedBox(width: 8),
                       Text(
                         "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}",
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: primaryGreen,
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
-                      const Icon(Icons.arrow_drop_down, color: primaryGreen),
+                      Icon(Icons.arrow_drop_down, color: primaryGreen),
                     ],
                   ),
                 ),
@@ -434,6 +438,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _buildSummaryHeader(String title, String subtitle, Color primaryGreen, {Widget? trailing, VoidCallback? onExport}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Row(
@@ -442,8 +447,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                Text(subtitle, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -643,14 +648,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _summaryCard(CustomPainter painter, String label, int minutes, Color color) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final h = minutes ~/ 60;
     final m = minutes % 60;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.2 : 0.05), blurRadius: 10, offset: const Offset(0, 4))],
         border: Border.all(color: color.withValues(alpha: 0.1)),
       ),
       child: Column(
@@ -660,7 +667,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             children: [
               SizedBox(width: 20, height: 20, child: CustomPaint(painter: painter)),
               const SizedBox(width: 8),
-              Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+              Text(label, style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 12),
@@ -1698,10 +1705,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
     final String slotStr = slot == 1 ? " (Slot 2)" : " (Slot 1)";
 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1), width: 1)),
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1)),
       ),
       child: Row(
         children: [
@@ -1714,8 +1724,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label + slotStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Text("$startStr - $endStr", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+              Text(label + slotStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: colorScheme.onSurface)),
+              Text("$startStr - $endStr", style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
             ],
           ),
           const Spacer(),
@@ -1734,6 +1744,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _buildLegend(Color primaryGreen, ActivitySummary summary) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Wrap(
@@ -1744,7 +1755,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           _legendItem(const TahoWorkPainter(color: Colors.orange), "Work", summary.work),
           _legendItem(const TahoAvailabilityPainter(color: Colors.grey), "Availability", summary.availability),
           _legendItem(TahoRestPainter(color: primaryGreen), "Rest", summary.rest),
-          _legendItem(const TahoSessionPainter(color: Colors.black), "Session", -1),
+          _legendItem(TahoSessionPainter(color: colorScheme.onSurface), "Session", -1),
           _legendItem(const TahoCrewPainter(color: Colors.red), "Crew", -1),
         ],
       ),
@@ -1752,6 +1763,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _legendItem(CustomPainter painter, String label, int minutes) {
+    final colorScheme = Theme.of(context).colorScheme;
     final timeStr = minutes >= 0 ? " ${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m" : "";
 
     return Row(
@@ -1768,12 +1780,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
+              style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
             ),
             if (timeStr.isNotEmpty)
               Text(
                 timeStr,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
               ),
           ],
         ),
@@ -1783,6 +1795,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
   // Natančen prevod C++ metode DrawOneDay(BYTE* ptr, int counter, ActivityData& pData)
   List<Widget> _buildRecursiveTimeline(DailyActivities day, Color primaryGreen) {
+    final colorScheme = Theme.of(context).colorScheme;
     List<Widget> widgets = [];
     if (day.activities.isEmpty) return widgets;
 
@@ -1879,7 +1892,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         child: RotatedBox(
           quarterTurns: 3,
           child: Text("SLOT 2",
-              style: TextStyle(fontSize: 7, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 7, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
         ),
       ),
     ));
@@ -1891,7 +1904,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         child: RotatedBox(
           quarterTurns: 3,
           child: Text("SLOT 1",
-              style: TextStyle(fontSize: 7, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 7, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
         ),
       ),
     ));
@@ -1899,7 +1912,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       left: 0,
       right: 0,
       top: 39.5,
-      child: Container(height: 1, color: Colors.grey.withValues(alpha: 0.2)),
+      child: Container(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
     ));
 
     // Pokličemo s številom bajtov (2 bajta na zapis)
@@ -1944,6 +1957,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
   // Pomožna funkcija za risanje navpične črte ob vstavljanju/izvleku kartice (kot LineTo v C++)
   Widget _buildSessionLine(double hour, int slot) {
+    final colorScheme = Theme.of(context).colorScheme;
     // Further increased height to 40 (from 36) and adjusted top to protrude 4px above/below track
     // This makes the session boundaries much more prominent.
     final double top = slot == 1 ? 1 : 39;
@@ -1955,10 +1969,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       child: Container(
         width: 1.5,
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: colorScheme.onSurface,
           boxShadow: [
             BoxShadow(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: colorScheme.surface.withValues(alpha: 0.5),
               spreadRadius: 0.5,
               blurRadius: 0.5,
             ),
@@ -1969,6 +1983,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   List<Widget> _buildMinuteMarkers(int hour) {
+    final colorScheme = Theme.of(context).colorScheme;
     List<Widget> markers = [];
     int interval;
 
@@ -1991,7 +2006,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           bottom: 0,
           child: Container(
             width: 0.5,
-            color: Colors.grey.withValues(alpha: 0.15),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
           ),
         ),
       );
@@ -2006,7 +2021,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               m.toString().padLeft(2, '0'),
               style: TextStyle(
                 fontSize: 8,
-                color: Colors.grey.withValues(alpha: 0.5),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
             ),
           ),
