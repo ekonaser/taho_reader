@@ -994,7 +994,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.0.0")),
+          const ListTile(title: Text("Version"), trailing: Text("1.0.1")),
         ],
       ),
     );

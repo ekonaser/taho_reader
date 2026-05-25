@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 class TahoReader {
-  static const MethodChannel _channel = MethodChannel('com.example.taho_reader/taho_reader');
+  static const MethodChannel _channel = MethodChannel('com.tahoreader.app/taho_reader');
   bool _initialized = false;
 
   Future<bool> init() async {

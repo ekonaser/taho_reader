@@ -1,4 +1,4 @@
-package com.example.taho_reader
+package com.tahoreader.app
 
 import android.app.PendingIntent
 import android.content.*
@@ -12,7 +12,7 @@ import androidx.annotation.NonNull
 
 class MainActivity : FlutterActivity() {
 
-  private val channelName = "com.example.taho_reader/taho_reader"
+  private val channelName = "com.tahoreader.app/taho_reader"
 
   private lateinit var usbManager: UsbManager
   private var usbConnection: UsbDeviceConnection? = null
@@ -21,7 +21,7 @@ class MainActivity : FlutterActivity() {
   private var outEndpoint: UsbEndpoint? = null
 
   private var sequenceNumber = 0
-  private val usbPermissionAction = "com.example.taho_reader.USB_PERMISSION"
+  private val usbPermissionAction = "com.tahoreader.app.USB_PERMISSION"
 
   private var lastAtr: ByteArray? = null
 
