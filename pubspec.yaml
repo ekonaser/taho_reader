@@ -48,6 +48,7 @@ dependencies:
   path_provider_android: ^2.1.2
   open_file: ^3.3.2
   printing: ^5.13.2
+  flutter_native_splash: ^2.4.0
 
 dev_dependencies:
   flutter_test:
@@ -55,9 +56,25 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
 
+flutter_native_splash:
+  color: "#ffffff"
+  color_dark: "#000000"
+  image: "assets/splash_screen.png"
+  # dark_image: "assets/splash_screen_dark.png"
+  # Za Android 12+ (ikona v sredini + branding spodaj)
+  android_12:
+    image: "assets/splash_screen.png"
+    branding: "assets/branding.png"
+    color: "#ffffff"
+    color_dark: "#000000"
+  fullscreen: true
+
 flutter_launcher_icons:
   android: true
-  image_path: "assets/icon.png"
+  ios: false
+  image_path: "assets/Copilot_icon.png"
+  adaptive_icon_background: "#6B8E23"
+  adaptive_icon_foreground: "assets/Copilot_icon.png"
 
 flutter:
   uses-material-design: true

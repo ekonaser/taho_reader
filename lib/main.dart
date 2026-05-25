@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'activity_timeline.dart';
@@ -14,8 +15,15 @@ import 'taho_models.dart';
 import 'taho_parser.dart';
 import 'taho_reader.dart';
 
-void main() {
+void main() async {
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  
+  // Add 2 second delay to show the splash screen
+  await Future.delayed(const Duration(seconds: 3));
+  
   runApp(const TahoApp());
+  FlutterNativeSplash.remove();
 }
 
 class TahoApp extends StatelessWidget {
@@ -86,6 +94,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   bool _isGen2View = false;
   DateTime? _selectedActivityDate;
   bool isLoading = false;
+  double _loadingProgress = 0.0;
+  String _loadingStatus = "";
   int _selectedTabIndex = 0;
   int _utcOffset = 0;
   LatLng? _mapInitialCenter;
@@ -278,14 +288,20 @@ class _TahoDashboardState extends State<TahoDashboard> {
   Future<void> _readTachoCard() async {
     try {
       if (!mounted) return;
-      setState(() => isLoading = true);
+      setState(() {
+        isLoading = true;
+        _loadingProgress = 0.0;
+        _loadingStatus = "Connecting to reader...";
+      });
 
       if (!await _tahoReader.init()) throw 'USB reader not available';
+      setState(() => _loadingStatus = "Resetting card...");
       await _tahoReader.getATR(); 
       if (!await _tahoReader.isConnected()) throw 'Reader not connected';
       if (!await _tahoReader.isCardPresent()) throw 'Card not detected';
 
       setState(() {
+        _loadingStatus = "Initializing data...";
         cardId = null;
         driverLicense = null;
         vehicles = [];
@@ -332,40 +348,86 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Future<TahoGen1Card> _readGen1Card() async {
+    const int grandTotal = 63521;
+    int current = 0;
+
+    void update(int len, String status) {
+      current += len;
+      if (mounted) {
+        setState(() {
+          _loadingStatus = status;
+          _loadingProgress = current / grandTotal;
+        });
+      }
+    }
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x02]));
+    update(0, "Reading ICC (Gen 1)...");
     final iccData = await _tahoReader.readData(25);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x05]));
+    update(25, "Reading IC (Gen 1)...");
     final icData = await _tahoReader.readData(8);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x54, 0x41, 0x43, 0x48, 0x4F]));
+    update(8, "Selecting Tacho App...");
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
+    update(0, "Reading Card Certificate...");
     final cardCert = await _tahoReader.readData(194);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
+    update(194, "Reading CA Certificate...");
     final caCert = await _tahoReader.readData(194);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
+    update(194, "Reading Identification...");
     final idData = await _tahoReader.readData(143);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
+    update(143, "Reading Driver License...");
     final license = await _tahoReader.readData(53);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
+    update(53, "Reading Activities...");
     final activities = await _tahoReader.readData(13780);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
+    update(13780, "Reading Vehicles Used...");
     final vehicles = await _tahoReader.readData(6202);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
+    update(6202, "Reading App Identification...");
     final appId = await _tahoReader.readData(10);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
+    update(10, "Reading Download Status...");
     final download = await _tahoReader.readData(4);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
+    update(4, "Reading Events...");
     final events = await _tahoReader.readData(1728);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
+    update(1728, "Reading Faults...");
     final faults = await _tahoReader.readData(1152);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
+    update(1152, "Reading Places...");
     final places = await _tahoReader.readData(1121);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
+    update(1121, "Reading Current Usage...");
     final usage = await _tahoReader.readData(19);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
+    update(19, "Reading Control Activity...");
     final control = await _tahoReader.readData(46);
+    
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
+    update(46, "Reading Specific Conditions...");
     final conditions = await _tahoReader.readData(280);
+    update(280, "Gen 1 Reading Complete");
 
     return TahoGen1Card(
       iccData: iccData,
@@ -388,66 +450,99 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Future<TahoGen2Card> _readGen2Card() async {
+    const int grandTotal = 63521;
+    int current = 24959; // Start after Gen 1
+
+    void update(int len, String status) {
+      current += len;
+      if (mounted) {
+        setState(() {
+          _loadingStatus = status;
+          _loadingProgress = current / grandTotal;
+        });
+      }
+    }
+
     // selecting SMRDT app
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x53, 0x4D, 0x52, 0x44, 0x54]));
+    update(0, "Selecting Gen 2 App...");
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
+    update(0, "Reading App ID (Gen 2)...");
     final appId = await _tahoReader.readData(15);
 
     // CardMA Certificate
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
+    update(15, "Reading Card MA Cert...");
     final cardCert = await _tahoReader.readData(205);
 
     // Card Sign Certificate
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x01]));
+    update(205, "Reading Card Sign Cert...");
     final cardSignCert = await _tahoReader.readData(205);
 
     // CA Certificate
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
+    update(205, "Reading CA Cert (G2)...");
     final caCert = await _tahoReader.readData(205);
 
     // Link Certificate
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x09]));
+    update(205, "Reading Link Cert...");
     final linkCert = await _tahoReader.readData(205);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
+    update(205, "Reading Identification (G2)...");
     final idData = await _tahoReader.readData(143);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
+    update(143, "Reading Download Status (G2)...");
     final download = await _tahoReader.readData(4);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
+    update(4, "Reading Driver License (G2)...");
     final license = await _tahoReader.readData(53);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
+    update(53, "Reading Events (G2)...");
     final events = await _tahoReader.readData(3168);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
+    update(3168, "Reading Faults (G2)...");
     final faults = await _tahoReader.readData(1152);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
+    update(1152, "Reading Activities (G2)...");
     final activities = await _tahoReader.readData(13780);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
+    update(13780, "Reading Vehicles Used (G2)...");
     final vehicles = await _tahoReader.readData(9602);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
+    update(9602, "Reading Places (G2)...");
     final places = await _tahoReader.readData(2354);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
+    update(2354, "Reading Current Usage (G2)...");
     final usage = await _tahoReader.readData(19);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
+    update(19, "Reading Control Activity (G2)...");
     final control = await _tahoReader.readData(46);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
+    update(46, "Reading Specific Conditions (G2)...");
     final conditions = await _tahoReader.readData(562);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x23]));
+    update(562, "Reading Vehicles Units (G2)...");
     final units = await _tahoReader.readData(2002);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x24]));
+    update(2002, "Reading GNSS Records...");
     final gnssData = await _tahoReader.readData(5042);
+    update(5042, "Gen 2 Reading Complete");
 
     return TahoGen2Card(
       appIdentification: appId,
@@ -592,7 +687,29 @@ class _TahoDashboardState extends State<TahoDashboard> {
           ],
         ),
         body: isLoading 
-          ? const Center(child: CircularProgressIndicator(color: primaryGreen))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    value: _loadingProgress > 0 ? _loadingProgress : null,
+                    color: primaryGreen,
+                    strokeWidth: 6,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    "${(_loadingProgress * 100).toInt()}%",
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryGreen),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _loadingStatus,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            )
           : _buildTabContent(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedTabIndex,
@@ -852,6 +969,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: const Color(0xFF28B52F),
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text("Privacy Policy"),
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Privacy Policy"),
+                  content: const SingleChildScrollView(
+                    child: Text(
+                      "This app processes all tachograph data locally on your device. "
+                      "No personal data or card information is uploaded to any server. "
+                      "We use USB and Location permissions strictly for card reading and GNSS mapping.",
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("CLOSE"),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           const ListTile(title: Text("Version"), trailing: Text("1.0.0")),
         ],
       ),
