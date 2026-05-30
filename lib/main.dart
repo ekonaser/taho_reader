@@ -3,9 +3,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:latlong2/latlong.dart';
 import 'activity_timeline.dart';
 import 'faults_view.dart';
 import 'logs_view.dart';
@@ -15,15 +14,8 @@ import 'taho_models.dart';
 import 'taho_parser.dart';
 import 'taho_reader.dart';
 
-void main() async {
-  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  
-  // Add 2 second delay to show the splash screen
-  await Future.delayed(const Duration(seconds: 3));
-  
+void main() {
   runApp(const TahoApp());
-  FlutterNativeSplash.remove();
 }
 
 class TahoApp extends StatelessWidget {
@@ -994,7 +986,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.0.1")),
+          const ListTile(title: Text("Version"), trailing: Text("1.0.1+2")),
         ],
       ),
     );
