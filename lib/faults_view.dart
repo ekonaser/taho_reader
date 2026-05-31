@@ -15,7 +15,7 @@ class FaultsView extends StatefulWidget {
   State<FaultsView> createState() => _FaultsViewState();
 }
 
-enum _FaultViewMode { vehicle, driver }
+enum _FaultViewMode { vehicle, driver, appDetected }
 
 class _FaultsViewState extends State<FaultsView> {
   _FaultViewMode _viewMode = _FaultViewMode.vehicle;
@@ -52,29 +52,45 @@ class _FaultsViewState extends State<FaultsView> {
                   () => setState(() => _viewMode = _FaultViewMode.driver), 
                   primaryGreen
                 ),
+                _buildToggleItem(
+                  context,
+                  "Detected",
+                  _viewMode == _FaultViewMode.appDetected, 
+                  () => setState(() => _viewMode = _FaultViewMode.appDetected), 
+                  primaryGreen
+                ),
               ],
             ),
           ),
         ),
         Expanded(
-          child: _viewMode == _FaultViewMode.vehicle
-              ? (widget.vehicleFaults.isEmpty
-                  ? _buildEmptyState(context, "No technical faults found.")
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: widget.vehicleFaults.length,
-                      itemBuilder: (context, index) => _buildFaultCard(context, widget.vehicleFaults[index]),
-                    ))
-              : (widget.driverEvents.isEmpty
-                  ? _buildEmptyState(context, "No driver events found.")
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      itemCount: widget.driverEvents.length,
-                      itemBuilder: (context, index) => _buildFaultCard(context, widget.driverEvents[index]),
-                    )),
+          child: _buildMainContent(),
         ),
       ],
     );
+  }
+
+  Widget _buildMainContent() {
+    switch (_viewMode) {
+      case _FaultViewMode.vehicle:
+        return widget.vehicleFaults.isEmpty
+            ? _buildEmptyState(context, "No technical faults found.")
+            : ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16),
+                itemCount: widget.vehicleFaults.length,
+                itemBuilder: (context, index) => _buildFaultCard(context, widget.vehicleFaults[index]),
+              );
+      case _FaultViewMode.driver:
+        return widget.driverEvents.isEmpty
+            ? _buildEmptyState(context, "No driver events found.")
+            : ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16),
+                itemCount: widget.driverEvents.length,
+                itemBuilder: (context, index) => _buildFaultCard(context, widget.driverEvents[index]),
+              );
+      case _FaultViewMode.appDetected:
+        return _buildEmptyState(context, "App Detected content will be here.");
+    }
   }
 
   Widget _buildEmptyState(BuildContext context, String message) {

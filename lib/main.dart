@@ -914,11 +914,28 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late bool _localIsGen2View;
+  bool _under50km = false;
 
   @override
   void initState() {
     super.initState();
     _localIsGen2View = widget.isGen2View;
+    _loadUnder50km();
+  }
+
+  Future<void> _loadUnder50km() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _under50km = prefs.getBool('under50km') ?? false;
+    });
+  }
+
+  Future<void> _setUnder50km(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('under50km', value);
+    setState(() {
+      _under50km = value;
+    });
   }
 
   @override
@@ -961,6 +978,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: const Color(0xFF28B52F),
           ),
           const Divider(),
+          SwitchListTile(
+            title: const Text("Under 50 km"),
+            value: _under50km,
+            onChanged: _setUnder50km,
+            activeColor: const Color(0xFF28B52F),
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: const Text("Privacy Policy"),
@@ -973,7 +997,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Text(
                       "This app processes all tachograph data locally on your device. "
                       "No personal data or card information is uploaded to any server. "
-                      "We use USB and Location permissions strictly for card reading and GNSS mapping.",
+                      "We use USB and Internet permissions strictly for card reading and GNSS mapping.",
                     ),
                   ),
                   actions: [
@@ -986,7 +1010,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.0.1+2")),
+          const ListTile(title: Text("Version"), trailing: Text("1.0.2")),
         ],
       ),
     );
