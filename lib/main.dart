@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -81,9 +82,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
   List<DailyActivities> activities = [];
   List<TahoFault> vehicleFaults = [];
   List<TahoFault> driverEvents = [];
+  List<TahoFault> detectedEvents = [];
   TahoGen2Card? gen2Card;
   TahoGen1Card? gen1Card;
   bool _isGen2View = false;
+  bool _under50km = false;
   DateTime? _selectedActivityDate;
   bool isLoading = false;
   double _loadingProgress = 0.0;
@@ -106,6 +109,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _isGen2View = prefs.getBool('isGen2View') ?? false;
+      _under50km = prefs.getBool('under50km') ?? false;
     });
     if (gen1Card != null || gen2Card != null) {
       _updateParsedData();
@@ -186,7 +190,60 @@ class _TahoDashboardState extends State<TahoDashboard> {
           placesG2 = [];
         }
       }
+
+      detectedEvents = [];
+      if (!_under50km) {
+        for (var day in activities) {
+          _detectOverdriveForDay(day);
+        }
+      }
     });
+  }
+
+  void _detectOverdriveForDay(DailyActivities day) {
+    if (day.activities.isEmpty) return;
+
+    int accumulatedDriving = 0;
+    bool hasFirstBreakPart = false;
+
+    for (int i = 1; i < day.activities.length; i++) {
+      final prev = day.activities[i - 1];
+      final curr = day.activities[i];
+      final duration = curr.time - prev.time;
+      if (duration <= 0) continue;
+
+      // Reset if no card inserted (New session or card removed)
+      if (prev.card == 0) {
+        accumulatedDriving = 0;
+        hasFirstBreakPart = false;
+      }
+
+      if (prev.activity == 0 || prev.activity == 1) { // Rest or Availability
+        if (duration >= 45 || (duration >= 30 && hasFirstBreakPart)) {
+          accumulatedDriving = 0;
+          hasFirstBreakPart = false;
+        } else if (duration >= 15 && !hasFirstBreakPart) {
+          hasFirstBreakPart = true;
+        }
+      } else if (prev.activity == 3) { // Driving
+        int oldAccumulated = accumulatedDriving;
+        accumulatedDriving += duration;
+        if (accumulatedDriving > 270) {
+          int startOfOverdriveInThisSegment = max(0, 270 - oldAccumulated);
+          final begin = day.date.add(Duration(minutes: prev.time + startOfOverdriveInThisSegment));
+          final end = day.date.add(Duration(minutes: curr.time));
+
+          detectedEvents.add(TahoFault(
+            type: 0xFF, // Custom Overdrive type
+            beginTime: begin,
+            endTime: end,
+            vehicleRegistrationNation: 0,
+            vehicleRegistrationNumber: "Detected",
+          ));
+          accumulatedDriving = 270;
+        }
+      }
+    }
   }
 
   Map<String, Uint8List> _extractAllSections(Uint8List bytes) {
@@ -625,6 +682,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
         ),
       ),
     );
+    _loadSettings();
   }
 
   void _saveToDdd() {
@@ -768,11 +826,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
           onDateTap: _selectActivityDate,
           onPrevDay: () => _jumpToActivityDay(1), // Older
           onNextDay: () => _jumpToActivityDay(-1), // Newer
+          under50km: _under50km,
         );
       case 3:
         return FaultsView(
           vehicleFaults: vehicleFaults,
           driverEvents: driverEvents,
+          detectedEvents: detectedEvents,
         );
       case 4:
         return OpenStreetMapScreen(
@@ -978,11 +1038,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: const Color(0xFF28B52F),
           ),
           const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              "Overdrive Settings",
+              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF28B52F)),
+            ),
+          ),
           SwitchListTile(
             title: const Text("Under 50 km"),
             value: _under50km,
             onChanged: _setUnder50km,
             activeColor: const Color(0xFF28B52F),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Text(
+              "NOTE: For the application to correctly detect overdrive, the card must be inserted in the tachograph and kept under constant voltage, meaning that electrical power must be continuously supplied.",
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ),
           const Divider(),
           ListTile(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
@@ -12,12 +13,14 @@ class ActivitySummary {
   int availability = 0;
   int work = 0;
   int driving = 0;
+  int overdrive = 0;
 
   void reset() {
     rest = 0;
     availability = 0;
     work = 0;
     driving = 0;
+    overdrive = 0;
   }
 }
 
@@ -30,6 +33,7 @@ class ActivityTimeline extends StatefulWidget {
   final VoidCallback? onNextDay;
   final int utcOffset;
   final ValueChanged<int> onUtcOffsetChanged;
+  final bool under50km;
 
   const ActivityTimeline({
     super.key,
@@ -41,6 +45,7 @@ class ActivityTimeline extends StatefulWidget {
     this.onNextDay,
     required this.utcOffset,
     required this.onUtcOffsetChanged,
+    required this.under50km,
   });
 
   @override
@@ -495,6 +500,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final summary = ActivitySummary();
     for (var day in filteredDays) {
       if (day.activities.isEmpty) continue;
+      
+      int accumulatedDriving = 0;
+      bool hasFirstBreakPart = false;
+
       for (int i = 1; i < day.activities.length; i++) {
         final prev = day.activities[i - 1];
         final curr = day.activities[i];
@@ -502,13 +511,49 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         if (duration <= 0) continue;
 
         switch (prev.activity) {
-          case 0: summary.rest += duration; break;
-          case 1: summary.availability += duration; break;
-          case 2: summary.work += duration; break;
-          case 3: summary.driving += duration; break;
+          case 0: 
+            summary.rest += duration;
+            if (!widget.under50km) {
+              if (duration >= 45) {
+                accumulatedDriving = 0;
+                hasFirstBreakPart = false;
+              } else if (duration >= 30 && hasFirstBreakPart) {
+                accumulatedDriving = 0;
+                hasFirstBreakPart = false;
+              } else if (duration >= 15 && !hasFirstBreakPart) {
+                hasFirstBreakPart = true;
+              }
+            }
+            break;
+          case 1: 
+            summary.availability += duration;
+            if (!widget.under50km) {
+              if (duration >= 45) {
+                accumulatedDriving = 0;
+                hasFirstBreakPart = false;
+              } else if (duration >= 30 && hasFirstBreakPart) {
+                accumulatedDriving = 0;
+                hasFirstBreakPart = false;
+              } else if (duration >= 15 && !hasFirstBreakPart) {
+                hasFirstBreakPart = true;
+              }
+            }
+            break;
+          case 2: 
+            summary.work += duration; 
+            break;
+          case 3: 
+            summary.driving += duration;
+            if (!widget.under50km) {
+              accumulatedDriving += duration;
+              if (accumulatedDriving > 270) {
+                summary.overdrive += (accumulatedDriving - 270);
+                accumulatedDriving = 270; 
+              }
+            }
+            break;
         }
 
-        // If this record indicates card extraction, skip the interval to the next insertion
         if (curr.card == 0) i++;
       }
     }
@@ -1264,6 +1309,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final summary = ActivitySummary();
     if (day.activities.isEmpty) return summary;
 
+    int accumulatedDriving = 0;
+    bool hasFirstBreakPart = false;
+
     void process(int startIndex, int counter) {
       if (counter <= 0) return;
       int ptr = startIndex;
@@ -1278,10 +1326,45 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
         if (durationMinutes > 0) {
           switch (type) {
-            case 0: summary.rest += durationMinutes; break;
-            case 1: summary.availability += durationMinutes; break;
+            case 0: 
+              summary.rest += durationMinutes; 
+              if (!widget.under50km) {
+                if (durationMinutes >= 45) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+                  hasFirstBreakPart = true;
+                }
+              }
+              break;
+            case 1: 
+              summary.availability += durationMinutes; 
+              if (!widget.under50km) {
+                if (durationMinutes >= 45) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+                  hasFirstBreakPart = true;
+                }
+              }
+              break;
             case 2: summary.work += durationMinutes; break;
-            case 3: summary.driving += durationMinutes; break;
+            case 3: 
+              summary.driving += durationMinutes; 
+              if (!widget.under50km) {
+                accumulatedDriving += durationMinutes;
+                if (accumulatedDriving > 270) {
+                  summary.overdrive += (accumulatedDriving - 270);
+                  accumulatedDriving = 270;
+                }
+              }
+              break;
           }
         }
         ptr++;
@@ -1755,6 +1838,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           _legendItem(const TahoWorkPainter(color: Colors.orange), "Work", summary.work),
           _legendItem(const TahoAvailabilityPainter(color: Colors.grey), "Availability", summary.availability),
           _legendItem(TahoRestPainter(color: primaryGreen), "Rest", summary.rest),
+          if (summary.overdrive > 0)
+            _legendItem(const Icon(Icons.warning, color: Colors.red, size: 18), "Overdrive", summary.overdrive),
           _legendItem(TahoSessionPainter(color: colorScheme.onSurface), "Session", -1),
           _legendItem(const TahoCrewPainter(color: Colors.red), "Crew", -1),
         ],
@@ -1762,17 +1847,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Widget _legendItem(CustomPainter painter, String label, int minutes) {
+  Widget _legendItem(dynamic iconOrPainter, String label, int minutes) {
     final colorScheme = Theme.of(context).colorScheme;
     final timeStr = minutes >= 0 ? " ${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m" : "";
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        CustomPaint(
-          size: const Size(18, 18),
-          painter: painter,
-        ),
+        if (iconOrPainter is CustomPainter)
+          CustomPaint(
+            size: const Size(18, 18),
+            painter: iconOrPainter,
+          )
+        else
+          iconOrPainter as Widget,
         const SizedBox(width: 6),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1800,9 +1888,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     if (day.activities.isEmpty) return widgets;
 
     _summary.reset();
+    
+    int accumulatedDriving = 0;
+    bool hasFirstBreakPart = false;
 
     void drawOneDay(int startIndex, int counter) {
       if (counter <= 0) return;
+
+      // Reset accumulated driving for each new session (e.g. after card is re-inserted)
+      accumulatedDriving = 0;
+      hasFirstBreakPart = false;
 
       int ptr = startIndex;
       int internalCounter = counter;
@@ -1827,6 +1922,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         double duration = activityTime - prevTime;
         int durationMinutes = (currentAct.time - day.activities[ptr - 1].time);
 
+        // Reset if no card inserted (New session or card removed)
+        // card == 0 means "No card inserted" based on bit 13 in the parser
+        if (day.activities[ptr - 1].card == 0) {
+          accumulatedDriving = 0;
+          hasFirstBreakPart = false;
+        }
+
         // switch (activityType) { ... FillRect ... }
         if (duration > 0) {
           Color color;
@@ -1834,24 +1936,70 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             case 0:
               color = primaryGreen;
               _summary.rest += durationMinutes;
-              break; // REST (0x1FFF1F v C++)
+              if (!widget.under50km) {
+                if (durationMinutes >= 45) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+                  hasFirstBreakPart = true;
+                }
+              }
+              break; // REST
             case 1:
               color = Colors.grey;
               _summary.availability += durationMinutes;
-              break; // ADMIN/AVAIL (0x6B6B6B)
+              if (!widget.under50km) {
+                if (durationMinutes >= 45) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+                  accumulatedDriving = 0;
+                  hasFirstBreakPart = false;
+                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+                  hasFirstBreakPart = true;
+                }
+              }
+              break; // ADMIN/AVAIL
             case 2:
               color = Colors.orange;
               _summary.work += durationMinutes;
-              break; // WORK (0xFF9D00)
+              break; // WORK
             case 3:
               color = Colors.blue;
               _summary.driving += durationMinutes;
-              break; // DRIVING (0x00A5FF)
+              if (!widget.under50km) {
+                accumulatedDriving += durationMinutes;
+                if (accumulatedDriving > 270) {
+                  _summary.overdrive += (accumulatedDriving - 270);
+                  // Draw regular part in blue
+                  double regularDuration = (270 - (accumulatedDriving - durationMinutes)) / 60.0;
+                  if (regularDuration > 0) {
+                    widgets.add(_buildActivityBlock(prevTime, regularDuration, Colors.blue, activitySlot));
+                  }
+                  // Draw overdrive part in red
+                  double overdriveDuration = (accumulatedDriving - 270) / 60.0;
+                  widgets.add(_buildActivityBlock(prevTime + max(0, regularDuration), overdriveDuration, Colors.red, activitySlot));
+                  
+                  accumulatedDriving = 270;
+                  // Skip standard draw below
+                  color = Colors.transparent; 
+                } else {
+                  color = Colors.blue;
+                }
+              } else {
+                color = Colors.blue;
+              }
+              break; // DRIVING
             default:
               color = Colors.grey;
               break;
           }
-          widgets.add(_buildActivityBlock(prevTime, duration, color, activitySlot));
+          if (color != Colors.transparent) {
+            widgets.add(_buildActivityBlock(prevTime, duration, color, activitySlot));
+          }
 
           if (day.activities[ptr - 1].crew == 1) {
             widgets.add(_buildCrewLine(prevTime, duration, activitySlot));
@@ -1864,7 +2012,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           widgets.add(_buildSessionLine(activityTime, currentAct.slot));
         }
 
-        // activityType = (activity >> 11) & 0b11; (Update za naslednji interval)
         activityType = currentAct.activity;
         activitySlot = currentAct.slot;
         prevTime = activityTime;
@@ -1872,14 +2019,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         ptr++;
         internalCounter -= 2;
 
-        // Natančen pogoj iz C++: if (((activity >> 13) & 0b1) && (counter > 2))
         if (currentAct.card == 0 && internalCounter > 2) {
           drawOneDay(ptr, internalCounter);
-          break; // Izhod iz zanke v trenutni rekurzivni stopnji
+          break;
         }
       }
 
-      // MoveToEx / LineTo (Zaključna črta na koncu funkcije)
       widgets.add(_buildSessionLine(activityTime, activitySlot));
     }
 

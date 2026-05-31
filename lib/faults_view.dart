@@ -4,11 +4,13 @@ import 'taho_models.dart';
 class FaultsView extends StatefulWidget {
   final List<TahoFault> vehicleFaults;
   final List<TahoFault> driverEvents;
+  final List<TahoFault> detectedEvents;
 
   const FaultsView({
     super.key,
     required this.vehicleFaults,
     required this.driverEvents,
+    this.detectedEvents = const [],
   });
 
   @override
@@ -54,7 +56,7 @@ class _FaultsViewState extends State<FaultsView> {
                 ),
                 _buildToggleItem(
                   context,
-                  "Detected",
+                  "Overdrive",
                   _viewMode == _FaultViewMode.appDetected, 
                   () => setState(() => _viewMode = _FaultViewMode.appDetected), 
                   primaryGreen
@@ -89,7 +91,31 @@ class _FaultsViewState extends State<FaultsView> {
                 itemBuilder: (context, index) => _buildFaultCard(context, widget.driverEvents[index]),
               );
       case _FaultViewMode.appDetected:
-        return _buildEmptyState(context, "App Detected content will be here.");
+        final colorScheme = Theme.of(context).colorScheme;
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "NOTE: This overdrive detection is not applicable for journeys within a 50 km radius of the base, as they are exempt from standard driving time regulations.",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+            Expanded(
+              child: widget.detectedEvents.isEmpty
+                  ? _buildEmptyState(context, "No detected events found.")
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      itemCount: widget.detectedEvents.length,
+                      itemBuilder: (context, index) => _buildFaultCard(context, widget.detectedEvents[index]),
+                    ),
+            ),
+          ],
+        );
     }
   }
 
@@ -134,10 +160,11 @@ class _FaultsViewState extends State<FaultsView> {
     final colorScheme = theme.colorScheme;
     final title = _getFaultTitle(fault.type);
     final isSecurity = fault.type >= 0x10 && fault.type <= 0x2F;
-    final isFault = fault.type >= 0x30;
-    
-    final iconColor = isSecurity ? Colors.red : (isFault ? Colors.orange : Colors.blue);
-    final icon = isSecurity ? Icons.security : (isFault ? Icons.error_outline : Icons.info_outline);
+    final isOverdrive = fault.type == 0xFF;
+    final isFault = !isOverdrive && fault.type >= 0x30;
+
+    final iconColor = isOverdrive || isSecurity ? Colors.red : (isFault ? Colors.orange : Colors.blue);
+    final icon = isOverdrive ? Icons.warning_amber_rounded : (isSecurity ? Icons.security : (isFault ? Icons.error_outline : Icons.info_outline));
 
     return Card(
       elevation: 2,
@@ -166,9 +193,13 @@ class _FaultsViewState extends State<FaultsView> {
               ],
             ),
             const Divider(height: 24),
-            _faultDetailRow(context, Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
-            _faultDetailRow(context, Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
-            _faultDetailRow(context, Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
+            if (isOverdrive)
+              _faultDetailRow(context, Icons.calendar_today, "Date", fault.beginTime.toLocal().toString().split(' ')[0])
+            else ...[
+              _faultDetailRow(context, Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
+              _faultDetailRow(context, Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
+              _faultDetailRow(context, Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
+            ],
           ],
         ),
       ),
@@ -191,6 +222,7 @@ class _FaultsViewState extends State<FaultsView> {
   }
 
   String _getFaultTitle(int type) {
+    if (type == 0xFF) return "Overdrive Detected";
     switch (type) {
       case 0x00: return "General Event (No details)";
       case 0x01: return "Insertion of non-valid card";
