@@ -833,6 +833,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults: vehicleFaults,
           driverEvents: driverEvents,
           detectedEvents: detectedEvents,
+          onNavigateToDay: (date) {
+            setState(() {
+              // Normalize to start of day to match Activities logic
+              _selectedActivityDate = DateTime(date.year, date.month, date.day);
+              _selectedTabIndex = 2; // Activities Tab
+            });
+          },
         );
       case 4:
         return OpenStreetMapScreen(

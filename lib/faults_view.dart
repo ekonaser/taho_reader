@@ -5,12 +5,14 @@ class FaultsView extends StatefulWidget {
   final List<TahoFault> vehicleFaults;
   final List<TahoFault> driverEvents;
   final List<TahoFault> detectedEvents;
+  final Function(DateTime)? onNavigateToDay;
 
   const FaultsView({
     super.key,
     required this.vehicleFaults,
     required this.driverEvents,
     this.detectedEvents = const [],
+    this.onNavigateToDay,
   });
 
   @override
@@ -171,36 +173,60 @@ class _FaultsViewState extends State<FaultsView> {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: colorScheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: iconColor, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: isOverdrive && widget.onNavigateToDay != null 
+            ? () => widget.onNavigateToDay!(fault.beginTime) 
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: iconColor, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface),
+                    ),
                   ),
-                ),
-                Text(
-                  "0x${fault.type.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
-                ),
+                  Text(
+                    "0x${fault.type.toRadixString(16).padLeft(2, '0').toUpperCase()}",
+                    style: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              if (isOverdrive) ...[
+                _faultDetailRow(context, Icons.calendar_today, "Date", fault.beginTime.toLocal().toString().split(' ')[0]),
+                if (widget.onNavigateToDay != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          "Show on Timeline",
+                          style: TextStyle(
+                            color: theme.primaryColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, size: 16, color: theme.primaryColor),
+                      ],
+                    ),
+                  ),
+              ] else ...[
+                _faultDetailRow(context, Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
+                _faultDetailRow(context, Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
+                _faultDetailRow(context, Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
               ],
-            ),
-            const Divider(height: 24),
-            if (isOverdrive)
-              _faultDetailRow(context, Icons.calendar_today, "Date", fault.beginTime.toLocal().toString().split(' ')[0])
-            else ...[
-              _faultDetailRow(context, Icons.access_time, "Start", fault.beginTime.toLocal().toString().split('.')[0]),
-              _faultDetailRow(context, Icons.timer_off, "End", fault.endTime.toLocal().toString().split('.')[0]),
-              _faultDetailRow(context, Icons.directions_car, "Vehicle", fault.vehicleRegistrationNumber),
             ],
-          ],
+          ),
         ),
       ),
     );

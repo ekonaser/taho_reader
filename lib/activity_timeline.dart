@@ -890,7 +890,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   pw.SizedBox(width: 30),
                   _pdfLegendItem("Session", PdfColors.black, -1),
                   pw.SizedBox(width: 30),
-                  _pdfLegendItem("Crew", PdfColors.red, -2),
+                  _pdfLegendItem("Crew", PdfColors.indigo, -2),
                 ],
               ),
               pw.SizedBox(height: 20),
@@ -1194,7 +1194,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               child: pw.Container(
                 width: max(0.5, duration * hourWidth),
                 height: 1.5,
-                color: PdfColors.red,
+                color: PdfColors.indigo,
               ),
             ));
           }
@@ -1438,7 +1438,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               child: pw.Container(
                 width: max(0.5, duration * hourWidth),
                 height: 2,
-                color: PdfColors.red,
+                color: PdfColors.indigo,
               ),
             ));
           }
@@ -1841,7 +1841,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           if (summary.overdrive > 0)
             _legendItem(const Icon(Icons.warning, color: Colors.red, size: 18), "Overdrive", summary.overdrive),
           _legendItem(TahoSessionPainter(color: colorScheme.onSurface), "Session", -1),
-          _legendItem(const TahoCrewPainter(color: Colors.red), "Crew", -1),
+          _legendItem(const TahoCrewPainter(color: Colors.indigo), "Crew", -1),
         ],
       ),
     );
@@ -2095,7 +2095,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       top: top,
       height: 2,
       child: Container(
-        color: Colors.red,
+        color: Colors.indigo,
       ),
     );
   }

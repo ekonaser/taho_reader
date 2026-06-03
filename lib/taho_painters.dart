@@ -100,7 +100,7 @@ class TahoSessionPainter extends CustomPainter {
 
 class TahoCrewPainter extends CustomPainter {
   final Color color;
-  const TahoCrewPainter({this.color = Colors.red});
+  const TahoCrewPainter({this.color = Colors.indigo});
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
