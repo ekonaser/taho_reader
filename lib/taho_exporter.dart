@@ -1,14 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
+import 'package:printing/printing.dart';
 import 'taho_models.dart';
 
 class TahoExporter {
-  Future<void> saveToDdd({
-    TahoGen1Card? gen1Card,
-    TahoGen2Card? gen2Card,
-    required String fileName,
-  }) async {
+  Uint8List _buildBytes(TahoGen1Card? gen1Card, TahoGen2Card? gen2Card) {
     final builder = BytesBuilder();
 
     if (gen1Card != null) {
@@ -51,7 +48,15 @@ class TahoExporter {
       _addSection(builder, 0x05, 0x24, 0x02, gen2Card.GNSS);
     }
 
-    final bytes = builder.toBytes();
+    return builder.toBytes();
+  }
+
+  Future<void> saveToDdd({
+    TahoGen1Card? gen1Card,
+    TahoGen2Card? gen2Card,
+    required String fileName,
+  }) async {
+    final bytes = _buildBytes(gen1Card, gen2Card);
     if (bytes.isEmpty) return;
 
     String? outputFile = await FilePicker.saveFile(
@@ -64,6 +69,20 @@ class TahoExporter {
       final file = File(outputFile);
       await file.writeAsBytes(bytes);
     }
+  }
+
+  Future<void> shareDdd({
+    TahoGen1Card? gen1Card,
+    TahoGen2Card? gen2Card,
+    required String fileName,
+  }) async {
+    final bytes = _buildBytes(gen1Card, gen2Card);
+    if (bytes.isEmpty) return;
+
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '$fileName.ddd',
+    );
   }
 
   void _addSection(BytesBuilder builder, int b1, int b2, int gen, Uint8List data) {

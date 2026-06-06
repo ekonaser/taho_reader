@@ -733,6 +733,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: Icon(Icons.share, color: primaryGreen),
+              title: const Text('Share PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportToPdf(day, primaryGreen, share: true);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.open_in_new, color: Colors.blue),
               title: const Text('Open PDF'),
               onTap: () {
@@ -754,7 +762,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen, {bool openImmediately = true}) async {
+  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen, {bool openImmediately = false, bool share = false}) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
     final dateStr = day.date.toLocal().toString().split(' ').first;
@@ -903,7 +911,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final fileName = 'ActivityLog_$dateStr';
     File? file;
 
-    if (openImmediately) {
+    if (share) {
+      await SaveAndOpenDocument.sharePdf(
+        name: "Daily_$dateStr",
+        pdf: doc,
+      );
+      return;
+    } else if (openImmediately) {
       file = await SaveAndOpenDocument.savePdfToCache(
         pdf: doc,
       );
@@ -935,6 +949,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: Icon(Icons.share, color: primaryGreen),
+              title: const Text('Share Summary PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, share: true);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.open_in_new, color: Colors.blue),
               title: const Text('Open Summary PDF'),
               onTap: () {
@@ -956,7 +978,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Future<void> _exportSummaryToPdf(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen, {required bool openImmediately}) async {
+  Future<void> _exportSummaryToPdf(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen, {bool openImmediately = false, bool share = false}) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
     final summary = _calculateSummary(days);
@@ -1053,7 +1075,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final fileName = '${title.replaceAll(' ', '_')}_$rangeStr';
     File? file;
 
-    if (openImmediately) {
+    if (share) {
+      await SaveAndOpenDocument.sharePdf(
+        name: fileName,
+        pdf: doc,
+      );
+      return;
+    } else if (openImmediately) {
       file = await SaveAndOpenDocument.savePdfToCache(
         pdf: doc,
       );
@@ -1885,10 +1913,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   List<Widget> _buildRecursiveTimeline(DailyActivities day, Color primaryGreen) {
     final colorScheme = Theme.of(context).colorScheme;
     List<Widget> widgets = [];
+    _summary.reset();
     if (day.activities.isEmpty) return widgets;
 
-    _summary.reset();
-    
     int accumulatedDriving = 0;
     bool hasFirstBreakPart = false;
 

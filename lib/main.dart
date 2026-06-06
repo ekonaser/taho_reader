@@ -699,6 +699,20 @@ class _TahoDashboardState extends State<TahoDashboard> {
     );
   }
 
+  void _shareDdd() {
+    if (cardId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No card data to share. Please read a card first.')),
+      );
+      return;
+    }
+    TahoExporter().shareDdd(
+      gen1Card: gen1Card,
+      gen2Card: gen2Card,
+      fileName: '${cardId!.name}_${cardId!.surname}'.replaceAll(' ', '_'),
+    );
+  }
+
   @override
   void dispose() {
     _tahoReader.dispose();
@@ -730,10 +744,35 @@ class _TahoDashboardState extends State<TahoDashboard> {
         appBar: AppBar(
           title: Text(_getTabTitle()),
           actions: [
-            IconButton(onPressed: _pickAndParseFile, icon: const Icon(Icons.file_open)),
-            IconButton(onPressed: _saveToDdd, icon: const Icon(Icons.save)),
-            IconButton(onPressed: _readTachoCard, icon: const Icon(Icons.usb)),
-            IconButton(onPressed: _showSettings, icon: const Icon(Icons.settings)),
+            ExpandingActionMenu(
+              actions: [
+                SpeedDialAction(
+                  icon: Icons.settings,
+                  label: 'Settings',
+                  onPressed: _showSettings,
+                ),
+                SpeedDialAction(
+                  icon: Icons.usb,
+                  label: 'Read Card',
+                  onPressed: _readTachoCard,
+                ),
+                SpeedDialAction(
+                  icon: Icons.file_open,
+                  label: 'Open .ddd',
+                  onPressed: _pickAndParseFile,
+                ),
+                SpeedDialAction(
+                  icon: Icons.share,
+                  label: 'Share .ddd',
+                  onPressed: _shareDdd,
+                ),
+                SpeedDialAction(
+                  icon: Icons.save,
+                  label: 'Save .ddd',
+                  onPressed: _saveToDdd,
+                ),
+              ],
+            ),
           ],
         ),
         body: isLoading 
@@ -963,6 +1002,53 @@ class _TahoDashboardState extends State<TahoDashboard> {
       ),
     );
   }
+}
+
+// --- Custom Action Menu (Vertical Dropdown) ---
+
+class ExpandingActionMenu extends StatelessWidget {
+  final List<SpeedDialAction> actions;
+
+  const ExpandingActionMenu({super.key, required this.actions});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      icon: const Icon(Icons.more_vert, color: Colors.white),
+      offset: const Offset(0, 45), // Odpre se tik pod vrstico
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      onSelected: (index) => actions[index].onPressed(),
+      itemBuilder: (context) => List.generate(actions.length, (index) {
+        final action = actions[index];
+        return PopupMenuItem<int>(
+          value: index,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(action.icon, color: const Color(0xFF28B52F), size: 22),
+              const SizedBox(width: 12),
+              Text(
+                action.label,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class SpeedDialAction {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String label;
+
+  SpeedDialAction({
+    required this.icon,
+    required this.onPressed,
+    required this.label,
+  });
 }
 
 class SettingsScreen extends StatefulWidget {
