@@ -111,3 +111,68 @@ class TahoCrewPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+class TahoInsertionPainter extends CustomPainter {
+  final Color color;
+  const TahoInsertionPainter({this.color = Colors.black});
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    
+    // Scale from 2.5x4 to size
+    final double sx = size.width / 2.5;
+    final double sy = size.height / 4.0;
+
+    final rectPath = Path()
+      ..moveTo(0 * sx, 0 * sy)
+      ..lineTo(1 * sx, 0 * sy)
+      ..lineTo(1 * sx, 4 * sy)
+      ..lineTo(0 * sx, 4 * sy)
+      ..close();
+    canvas.drawPath(rectPath, paint);
+
+    final triPath = Path()
+      ..moveTo(1.5 * sx, 0 * sy)
+      ..lineTo(2.5 * sx, 2 * sy)
+      ..lineTo(1.5 * sx, 4 * sy)
+      ..close();
+    canvas.drawPath(triPath, paint);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class TahoWithdrawalPainter extends CustomPainter {
+  final Color color;
+  const TahoWithdrawalPainter({this.color = Colors.black});
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    
+    // Scale from 2.5x4 to size
+    final double sx = size.width / 2.5;
+    final double sy = size.height / 4.0;
+
+    // Mirrored: Rect on the right, Triangle on the left pointing left
+    final rectPath = Path()
+      ..moveTo(1.5 * sx, 0 * sy)
+      ..lineTo(2.5 * sx, 0 * sy)
+      ..lineTo(2.5 * sx, 4 * sy)
+      ..lineTo(1.5 * sx, 4 * sy)
+      ..close();
+    canvas.drawPath(rectPath, paint);
+
+    final triPath = Path()
+      ..moveTo(1 * sx, 0 * sy)
+      ..lineTo(0 * sx, 2 * sy)
+      ..lineTo(1 * sx, 4 * sy)
+      ..close();
+    canvas.drawPath(triPath, paint);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

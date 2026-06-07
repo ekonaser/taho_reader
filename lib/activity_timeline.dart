@@ -34,6 +34,8 @@ class ActivityTimeline extends StatefulWidget {
   final int utcOffset;
   final ValueChanged<int> onUtcOffsetChanged;
   final bool under50km;
+  final List<PlaceRecord> places;
+  final List<PlaceRecordG2> placesG2;
 
   const ActivityTimeline({
     super.key,
@@ -46,6 +48,8 @@ class ActivityTimeline extends StatefulWidget {
     required this.utcOffset,
     required this.onUtcOffsetChanged,
     required this.under50km,
+    this.places = const [],
+    this.placesG2 = const [],
   });
 
   @override
@@ -306,7 +310,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                         height: 80,
                         child: Stack(
                           clipBehavior: Clip.none,
-                          children: _buildRecursiveTimeline(day, primaryGreen),
+                          children: [
+                            ..._buildRecursiveTimeline(day, primaryGreen),
+                            ..._buildPlaceMarkers(day),
+                          ],
                         ),
                       ),
                     ],
@@ -2090,6 +2097,130 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     // Pokličemo s številom bajtov (2 bajta na zapis)
     drawOneDay(0, day.activities.length * 2);
     return widgets;
+  }
+
+  List<Widget> _buildPlaceMarkers(DailyActivities day) {
+    List<Widget> markers = [];
+    final targetDate = day.date.toLocal();
+
+    // Gen 1 Places
+    for (var place in widget.places) {
+      final pDate = place.entryTime.toLocal();
+      if (pDate.year == targetDate.year && pDate.month == targetDate.month && pDate.day == targetDate.day) {
+        markers.add(_buildPlaceMarker(place.entryTime, place.entryTypeDailyWorkPeriod, place.dailyWorkPeriodCountry));
+      }
+    }
+
+    // Gen 2 Places
+    for (var place in widget.placesG2) {
+      final pDate = place.entryTime.toLocal();
+      if (pDate.year == targetDate.year && pDate.month == targetDate.month && pDate.day == targetDate.day) {
+        markers.add(_buildPlaceMarker(place.entryTime, place.entryTypeDailyWorkPeriod, place.dailyWorkPeriodCountry));
+      }
+    }
+
+    return markers;
+  }
+
+  String _getCountryCode(int code) {
+    final String name;
+    switch (code) {
+      case 1: name = "A"; break;
+      case 2: name = "AL"; break;
+      case 3: name = "AND"; break;
+      case 4: name = "ARM"; break;
+      case 5: name = "AZ"; break;
+      case 6: name = "B"; break;
+      case 7: name = "BG"; break;
+      case 8: name = "BIH"; break;
+      case 9: name = "BY"; break;
+      case 10: name = "CH"; break;
+      case 11: name = "CY"; break;
+      case 12: name = "CZ"; break;
+      case 13: name = "D"; break;
+      case 14: name = "DK"; break;
+      case 15: name = "E"; break;
+      case 16: name = "EST"; break;
+      case 17: name = "F"; break;
+      case 18: name = "FIN"; break;
+      case 19: name = "FL"; break;
+      case 20: name = "FR, FO"; break;
+      case 21: name = "UK"; break;
+      case 22: name = "GE"; break;
+      case 23: name = "GR"; break;
+      case 24: name = "H"; break;
+      case 25: name = "HR"; break;
+      case 26: name = "I"; break;
+      case 27: name = "IRL"; break;
+      case 28: name = "IS"; break;
+      case 29: name = "KZ"; break;
+      case 30: name = "L"; break;
+      case 31: name = "LT"; break;
+      case 32: name = "LV"; break;
+      case 33: name = "M"; break;
+      case 34: name = "MC"; break;
+      case 35: name = "MD"; break;
+      case 36: name = "MK"; break;
+      case 37: name = "N"; break;
+      case 38: name = "NL"; break;
+      case 39: name = "P"; break;
+      case 40: name = "PL"; break;
+      case 41: name = "RO"; break;
+      case 42: name = "RSM"; break;
+      case 43: name = "RUS"; break;
+      case 44: name = "S"; break;
+      case 45: name = "SK"; break;
+      case 46: name = "SLO"; break;
+      case 47: name = "TM"; break;
+      case 48: name = "TR"; break;
+      case 49: name = "UA"; break;
+      case 50: name = "V"; break;
+      case 51: name = "YU"; break;
+      case 52: name = "MNE"; break;
+      case 53: name = "SRB"; break;
+      case 54: name = "UZ"; break;
+      case 253: name = "EC"; break;
+      case 254: name = "EUR"; break;
+      case 255: name = "WLD"; break; // apparently UNK has same value as WLD
+      default:
+        return "Unknown ($code)";
+    }
+    return "$name";
+  }
+
+  Widget _buildPlaceMarker(DateTime entryTime, int type, int countryCode) {
+    // type: 0 = start (insertion), 1 = end (withdrawal)
+    final double hour = (entryTime.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) % 86400 / 3600.0;
+    
+    final String country = _getCountryCode(countryCode);
+
+    return Positioned(
+      left: hour * _hourWidth - 4.0, // Centrirano za širino 8px
+      top: -40, // Nižje in bližje časovnici
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            country,
+            style: TextStyle(
+              fontSize: 7, // Še manjša pisava
+              fontWeight: FontWeight.bold, 
+              color: type == 0 ? Colors.green : Colors.orange,
+            ),
+          ),
+          const SizedBox(height: 1),
+          SizedBox(
+            width: 8,
+            height: 12,
+            child: CustomPaint(
+              painter: type == 0 
+                ? TahoInsertionPainter(color: Colors.green) 
+                : TahoWithdrawalPainter(color: Colors.orange),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildActivityBlock(double startHour, double durationHours, Color color, int slot) {

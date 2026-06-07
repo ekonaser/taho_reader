@@ -866,6 +866,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           onPrevDay: () => _jumpToActivityDay(1), // Older
           onNextDay: () => _jumpToActivityDay(-1), // Newer
           under50km: _under50km,
+          places: places,
+          placesG2: placesG2,
         );
       case 3:
         return FaultsView(
@@ -1181,7 +1183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.1.0")),
+          const ListTile(title: Text("Version"), trailing: Text("1.1.2")),
         ],
       ),
     );

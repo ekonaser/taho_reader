@@ -392,6 +392,8 @@ class ParsedTachoData {
   final DriverLicense? driverLicense;
   final List<TahoFault> faults;
   final List<TahoFault> events;
+  final List<PlaceRecord> places;
+  final List<PlaceRecordG2> placesG2;
 
   ParsedTachoData({
     required this.cardId,
@@ -399,5 +401,7 @@ class ParsedTachoData {
     this.driverLicense,
     this.faults = const [],
     this.events = const [],
+    this.places = const [],
+    this.placesG2 = const [],
   });
 }
