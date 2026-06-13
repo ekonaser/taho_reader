@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'taho_models.dart';
@@ -545,23 +544,32 @@ class _LogsViewState extends State<LogsView> {
       children: [
         Padding(
           padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: InkResponse(
-              onTap: () => _showAddEventDialog(),
-              radius: 25,
-              highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-              splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-              child: Text(
-                "+",
-                style: TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w200,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              InkResponse(
+                onTap: () => _showEventDialog(),
+                radius: 25,
+                highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
+                child: Text(
+                  "+",
+                  style: TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.w200,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1,
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _exportAllEventsToCalendar,
+                icon: const Icon(Icons.ios_share),
+                tooltip: "Export all to ICS",
+                color: theme.colorScheme.primary,
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -617,21 +625,28 @@ class _LogsViewState extends State<LogsView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        event.type.toUpperCase(),
+                        event.type.isNotEmpty ? event.type : "UNNAMED EVENT",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: color,
-                          fontSize: 11,
-                          letterSpacing: 1.1,
+                          fontSize: 15,
                         ),
                       ),
                       Text(
-                        event.date.toLocal().toString().split('.')[0],
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        "${event.date.toLocal().toString().split('.')[0]}${event.endDate != null ? ' - ${event.endDate!.toLocal().toString().split(' ')[1].substring(0, 5)}' : ''}",
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
                 ),
+                IconButton(
+                  onPressed: () => _showEventDialog(event: event),
+                  icon: const Icon(Icons.edit_outlined, color: Colors.orange, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
                 IconButton(
                   onPressed: () => _exportToCalendar(event),
                   icon: const Icon(Icons.calendar_today, color: Colors.blue, size: 20),
@@ -721,22 +736,16 @@ class _LogsViewState extends State<LogsView> {
     }
   }
 
-  Future<void> _exportToCalendar(DriverEvent event) async {
+  String _buildIcsEventBlock(DriverEvent event, String nowTime) {
     final startTime = "${event.date.toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
-    final endTime = "${event.date.add(const Duration(hours: 1)).toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
-    final nowTime = "${DateTime.now().toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+    final endDateTime = event.endDate ?? event.date.add(const Duration(hours: 1));
+    final endTime = "${endDateTime.toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
 
-    final summary = "${event.type}: ${event.description}".replaceAll('\n', ' ');
+    final summary = event.type.replaceAll('\n', ' ');
     final description = event.description.replaceAll('\n', '\\n');
     final location = (event.location ?? "").replaceAll('\n', ' ');
-    
-    // Create ICS content
-    final icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//TahoReader//DriverEvent//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
+
+    return [
       'BEGIN:VEVENT',
       'DTSTAMP:$nowTime',
       'DTSTART:$startTime',
@@ -746,13 +755,71 @@ class _LogsViewState extends State<LogsView> {
       'LOCATION:$location',
       'UID:${event.date.millisecondsSinceEpoch}@tahoreader.app',
       'END:VEVENT',
+    ].join('\r\n');
+  }
+
+  Future<void> _exportToCalendar(DriverEvent event) async {
+    final nowTime = "${DateTime.now().toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+    
+    // Create ICS content
+    final icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//TahoReader//DriverEvent//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      _buildIcsEventBlock(event, nowTime),
       'END:VCALENDAR',
     ].join('\r\n');
 
+    await _saveAndOpenIcs(icsContent, "event.ics");
+  }
+
+  Future<void> _exportAllEventsToCalendar() async {
+    try {
+      final box = Hive.box<DriverEvent>('driver_events');
+      if (box.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("No events to export.")),
+          );
+        }
+        return;
+      }
+
+      final nowTime = "${DateTime.now().toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+      final events = box.values.toList().cast<DriverEvent>();
+
+      final List<String> icsLines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//TahoReader//DriverEventsAll//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+      ];
+
+      for (var event in events) {
+        icsLines.add(_buildIcsEventBlock(event, nowTime));
+      }
+
+      icsLines.add('END:VCALENDAR');
+      final icsContent = icsLines.join('\r\n');
+
+      await _saveAndOpenIcs(icsContent, "all_events.ics");
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error exporting all events: $e")),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveAndOpenIcs(String content, String fileName) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/event.ics');
-      await file.writeAsString(icsContent);
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(content);
 
       final result = await OpenFile.open(file.path, type: 'text/calendar');
       
@@ -764,45 +831,41 @@ class _LogsViewState extends State<LogsView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error exporting event: $e")),
+          SnackBar(content: Text("Error exporting events: $e")),
         );
       }
     }
   }
 
-  void _showAddEventDialog() {
-    final types = [
-      'Operational events',
-      'Driver observations',
-      'Compliance events',
-      'Personal events',
-      'Security events',
-      'Other events'
-    ];
-    String selectedType = types[0];
-    final descController = TextEditingController();
-    final locController = TextEditingController();
-    final tagsController = TextEditingController();
-    DateTime selectedDate = DateTime.now();
-    double? selectedLat;
-    double? selectedLon;
+  void _showEventDialog({DriverEvent? event}) {
+    final typeController = TextEditingController(text: event?.type ?? "");
+    final descController = TextEditingController(text: event?.description ?? "");
+    final locController = TextEditingController(text: event?.location ?? "");
+    final tagsController = TextEditingController(text: event?.tags?.join(' ') ?? "");
+    DateTime selectedDate = event?.date ?? DateTime.now();
+    DateTime? selectedEndDate = event?.endDate;
+    double? selectedLat = event?.latitude;
+    double? selectedLon = event?.longitude;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text("New Event"),
+          title: Text(event == null ? "New Event" : "Edit Event"),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: selectedType,
-                  decoration: const InputDecoration(labelText: "Event Type"),
-                  items: types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (val) => setDialogState(() => selectedType = val!),
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(
+                    labelText: "Event Name",
+                    counterText: "",
+                  ),
+                  maxLength: 50,
                 ),
                 const SizedBox(height: 16),
+                // Start Date & Time
                 InkWell(
                   onTap: () async {
                     final date = await showDatePicker(
@@ -825,17 +888,62 @@ class _LogsViewState extends State<LogsView> {
                             time.hour,
                             time.minute,
                           );
+                          // Ensure end date is after start date
+                          if (selectedEndDate != null && selectedEndDate!.isBefore(selectedDate)) {
+                            selectedEndDate = selectedDate.add(const Duration(hours: 1));
+                          }
                         });
                       }
                     }
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(labelText: "Date & Time"),
+                    decoration: const InputDecoration(labelText: "Start Date & Time"),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(selectedDate.toLocal().toString().split('.')[0]),
+                        Text(selectedDate.toLocal().toString().split('.')[0].substring(0, 16)),
                         const Icon(Icons.calendar_today, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // End Date & Time
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedEndDate ?? selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date != null) {
+                      final time = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(selectedEndDate ?? selectedDate.add(const Duration(hours: 1))),
+                      );
+                      if (time != null) {
+                        setDialogState(() {
+                          selectedEndDate = DateTime(
+                            date.year,
+                            date.month,
+                            date.day,
+                            time.hour,
+                            time.minute,
+                          );
+                        });
+                      }
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: "End Date & Time (Optional)"),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(selectedEndDate != null 
+                          ? selectedEndDate!.toLocal().toString().split('.')[0].substring(0, 16)
+                          : "Not set (default 1h)"),
+                        const Icon(Icons.event_available, size: 18, color: Colors.blue),
                       ],
                     ),
                   ),
@@ -849,9 +957,11 @@ class _LogsViewState extends State<LogsView> {
                         builder: (context) => OpenStreetMapScreen(
                           records: widget.gnssRecords,
                           isPicker: true,
-                          initialCenter: widget.gnssRecords.isNotEmpty 
-                              ? LatLng(widget.gnssRecords.last.latitude, widget.gnssRecords.last.longitude)
-                              : null,
+                          initialCenter: selectedLat != null 
+                              ? LatLng(selectedLat!, selectedLon!)
+                              : (widget.gnssRecords.isNotEmpty 
+                                  ? LatLng(widget.gnssRecords.last.latitude, widget.gnssRecords.last.longitude)
+                                  : null),
                         ),
                       ),
                     );
@@ -872,8 +982,13 @@ class _LogsViewState extends State<LogsView> {
                   ),
                 TextField(
                   controller: descController,
-                  decoration: const InputDecoration(labelText: "Description"),
-                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: "Description",
+                    helperText: "max 250 chars",
+                    counterText: "",
+                  ),
+                  maxLength: 250,
+                  maxLines: 3,
                 ),
                 TextField(
                   controller: locController,
@@ -890,16 +1005,29 @@ class _LogsViewState extends State<LogsView> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
             ElevatedButton(
               onPressed: () {
-                final newEvent = DriverEvent(
-                  date: selectedDate,
-                  type: selectedType,
-                  description: descController.text,
-                  location: locController.text,
-                  tags: tagsController.text.split(' ').where((t) => t.isNotEmpty).toList(),
-                  latitude: selectedLat,
-                  longitude: selectedLon,
-                );
-                Hive.box<DriverEvent>('driver_events').add(newEvent);
+                if (event == null) {
+                  final newEvent = DriverEvent(
+                    date: selectedDate,
+                    type: typeController.text,
+                    description: descController.text,
+                    location: locController.text,
+                    tags: tagsController.text.split(' ').where((t) => t.isNotEmpty).toList(),
+                    latitude: selectedLat,
+                    longitude: selectedLon,
+                    endDate: selectedEndDate,
+                  );
+                  Hive.box<DriverEvent>('driver_events').add(newEvent);
+                } else {
+                  event.date = selectedDate;
+                  event.type = typeController.text;
+                  event.description = descController.text;
+                  event.location = locController.text;
+                  event.tags = tagsController.text.split(' ').where((t) => t.isNotEmpty).toList();
+                  event.latitude = selectedLat;
+                  event.longitude = selectedLon;
+                  event.endDate = selectedEndDate;
+                  event.save();
+                }
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white),

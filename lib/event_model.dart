@@ -28,6 +28,9 @@ class DriverEvent extends HiveObject {
   @HiveField(7)
   double? longitude;
 
+  @HiveField(8)
+  DateTime? endDate;
+
   DriverEvent({
     required this.date,
     required this.type,
@@ -37,5 +40,6 @@ class DriverEvent extends HiveObject {
     this.googleEventId,
     this.latitude,
     this.longitude,
+    this.endDate,
   });
 }
