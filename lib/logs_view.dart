@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import 'taho_models.dart';
 import 'event_model.dart';
 import 'openstreetmap.dart';
@@ -630,7 +633,7 @@ class _LogsViewState extends State<LogsView> {
                   ),
                 ),
                 IconButton(
-                  onPressed: () => _exportToGoogleCalendar(event),
+                  onPressed: () => _exportToCalendar(event),
                   icon: const Icon(Icons.calendar_today, color: Colors.blue, size: 20),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -718,23 +721,50 @@ class _LogsViewState extends State<LogsView> {
     }
   }
 
-  Future<void> _exportToGoogleCalendar(DriverEvent event) async {
+  Future<void> _exportToCalendar(DriverEvent event) async {
     final startTime = "${event.date.toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
     final endTime = "${event.date.add(const Duration(hours: 1)).toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+    final nowTime = "${DateTime.now().toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+
+    final summary = "${event.type}: ${event.description}".replaceAll('\n', ' ');
+    final description = event.description.replaceAll('\n', '\\n');
+    final location = (event.location ?? "").replaceAll('\n', ' ');
     
-    final title = Uri.encodeComponent("${event.type}: ${event.description}");
-    final location = Uri.encodeComponent(event.location ?? "");
-    final details = Uri.encodeComponent("${event.description}\n\nTags: ${event.tags?.join(', ') ?? ''}");
-    
-    final url = "https://www.google.com/calendar/render?action=TEMPLATE&text=$title&dates=$startTime/$endTime&details=$details&location=$location";
-    final uri = Uri.parse(url);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+    // Create ICS content
+    final icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//TahoReader//DriverEvent//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      'DTSTAMP:$nowTime',
+      'DTSTART:$startTime',
+      'DTEND:$endTime',
+      'SUMMARY:$summary',
+      'DESCRIPTION:$description',
+      'LOCATION:$location',
+      'UID:${event.date.millisecondsSinceEpoch}@tahoreader.app',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/event.ics');
+      await file.writeAsString(icsContent);
+
+      final result = await OpenFile.open(file.path, type: 'text/calendar');
+      
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Could not open calendar: ${result.message}")),
+        );
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not launch Google Calendar")),
+          SnackBar(content: Text("Error exporting event: $e")),
         );
       }
     }
