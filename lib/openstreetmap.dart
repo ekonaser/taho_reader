@@ -7,12 +7,14 @@ class OpenStreetMapScreen extends StatefulWidget {
   final List<GnssRecord> records;
   final LatLng? initialCenter;
   final double? initialZoom;
+  final bool isPicker;
 
   const OpenStreetMapScreen({
     super.key,
     required this.records,
     this.initialCenter,
     this.initialZoom,
+    this.isPicker = false,
   });
 
   @override
@@ -21,6 +23,7 @@ class OpenStreetMapScreen extends StatefulWidget {
 
 class _OpenStreetMapScreenState extends State<OpenStreetMapScreen> {
   late final MapController _mapController;
+  LatLng? _selectedPoint;
 
   @override
   void initState() {
@@ -37,6 +40,16 @@ class _OpenStreetMapScreenState extends State<OpenStreetMapScreen> {
     final double zoom = widget.initialZoom ?? (widget.initialCenter != null ? 13.0 : 3.5);
 
     return Scaffold(
+      appBar: widget.isPicker ? AppBar(
+        title: const Text("Select Location"),
+        actions: [
+          if (_selectedPoint != null)
+            IconButton(
+              icon: const Icon(Icons.check),
+              onPressed: () => Navigator.pop(context, _selectedPoint),
+            ),
+        ],
+      ) : null,
       body: Stack(
         children: [
           FlutterMap(
@@ -44,6 +57,11 @@ class _OpenStreetMapScreenState extends State<OpenStreetMapScreen> {
             options: MapOptions(
               initialCenter: center,
               initialZoom: zoom,
+              onTap: widget.isPicker ? (tapPosition, point) {
+                setState(() {
+                  _selectedPoint = point;
+                });
+              } : null,
             ),
             children: [
               TileLayer(
@@ -51,23 +69,42 @@ class _OpenStreetMapScreenState extends State<OpenStreetMapScreen> {
                 userAgentPackageName: 'com.example.taho_reader',
               ),
               MarkerLayer(
-                markers: widget.records.map((r) => Marker(
-                  point: LatLng(r.latitude, r.longitude),
-                  width: 40,
-                  height: 40,
-                  child: GestureDetector(
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text("Time: ${r.timestamp.toLocal()}\nLat: ${r.formattedLat}\nLon: ${r.formattedLon}")),
-                      );
-                    },
-                    child: const Icon(
-                      Icons.location_pin,
-                      color: Color(0xFF00C853),
-                      size: 40,
+                markers: [
+                  ...widget.records.map((r) => Marker(
+                    point: LatLng(r.latitude, r.longitude),
+                    width: 40,
+                    height: 40,
+                    child: GestureDetector(
+                      onTap: () {
+                        if (widget.isPicker) {
+                          setState(() {
+                            _selectedPoint = LatLng(r.latitude, r.longitude);
+                          });
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Time: ${r.timestamp.toLocal()}\nLat: ${r.formattedLat}\nLon: ${r.formattedLon}")),
+                          );
+                        }
+                      },
+                      child: const Icon(
+                        Icons.location_pin,
+                        color: Color(0xFF00C853),
+                        size: 40,
+                      ),
                     ),
-                  ),
-                )).toList(),
+                  )),
+                  if (_selectedPoint != null)
+                    Marker(
+                      point: _selectedPoint!,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(
+                        Icons.person_pin_circle,
+                        color: Colors.red,
+                        size: 50,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),

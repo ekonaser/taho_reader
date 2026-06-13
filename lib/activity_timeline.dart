@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'pdf_helper.dart';
+import 'event_model.dart';
 
 class ActivitySummary {
   int rest = 0;
@@ -36,6 +37,7 @@ class ActivityTimeline extends StatefulWidget {
   final bool under50km;
   final List<PlaceRecord> places;
   final List<PlaceRecordG2> placesG2;
+  final List<DriverEvent> driverEvents;
 
   const ActivityTimeline({
     super.key,
@@ -50,6 +52,7 @@ class ActivityTimeline extends StatefulWidget {
     required this.under50km,
     this.places = const [],
     this.placesG2 = const [],
+    this.driverEvents = const [],
   });
 
   @override
@@ -313,6 +316,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                           children: [
                             ..._buildRecursiveTimeline(day, primaryGreen),
                             ..._buildPlaceMarkers(day),
+                            ..._buildEventMarkers(day),
                           ],
                         ),
                       ),
@@ -770,6 +774,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Future<void> _exportToPdf(DailyActivities day, Color primaryGreen, {bool openImmediately = false, bool share = false}) async {
+    // Filter events for this day at the beginning
+    final dayEvents = widget.driverEvents.where((e) => 
+      e.date.year == day.date.year && e.date.month == day.date.month && e.date.day == day.date.day).toList();
+    dayEvents.sort((a, b) => b.date.compareTo(a.date));
+
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
     final dateStr = day.date.toLocal().toString().split(' ').first;
@@ -850,6 +859,33 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
             pw.SizedBox(height: 5),
             ..._buildPdfActivityLog(day, pdfPrimaryGreen),
+
+            if (dayEvents.isNotEmpty) ...[
+              pw.SizedBox(height: 20),
+              pw.Text("DRIVER EVENTS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+              pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
+              pw.SizedBox(height: 5),
+              ...dayEvents.map((event) => pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 4),
+                decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text(event.type.toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _getPdfEventColor(event.type))),
+                        pw.Text(event.date.toLocal().toString().split('.')[0], style: const pw.TextStyle(fontSize: 9)),
+                      ],
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(event.description, style: const pw.TextStyle(fontSize: 10)),
+                    if (event.location != null && event.location!.isNotEmpty)
+                      pw.Text("Location: ${event.location}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                  ],
+                ),
+              )).toList(),
+            ],
           ];
         },
       ),
@@ -996,6 +1032,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
     }
 
+    // Collect all unique events for the summary
+    final eventsInPeriod = widget.driverEvents.where((e) {
+      return days.any((d) => 
+        e.date.year == d.date.year && 
+        e.date.month == d.date.month && 
+        e.date.day == d.date.day
+      );
+    }).toList();
+    eventsInPeriod.sort((a, b) => b.date.compareTo(a.date));
+
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -1075,6 +1121,33 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               ];
             }).toList(),
           ),
+
+          if (eventsInPeriod.isNotEmpty) ...[
+            pw.SizedBox(height: 20),
+            pw.Text("DRIVER EVENTS LOG", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
+            pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
+            pw.SizedBox(height: 5),
+            ...eventsInPeriod.map((event) => pw.Container(
+              padding: const pw.EdgeInsets.symmetric(vertical: 4),
+              decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(event.type.toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _getPdfEventColor(event.type))),
+                      pw.Text(event.date.toLocal().toString().split('.')[0], style: const pw.TextStyle(fontSize: 9)),
+                    ],
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(event.description, style: const pw.TextStyle(fontSize: 10)),
+                  if (event.location != null && event.location!.isNotEmpty)
+                    pw.Text("Location: ${event.location}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                ],
+              ),
+            )).toList(),
+          ],
         ],
       ),
     );
@@ -1721,6 +1794,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
+  PdfColor _getPdfEventColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'operational events': return PdfColors.blue;
+      case 'driver observations': return PdfColors.teal;
+      case 'compliance events': return PdfColors.red;
+      case 'personal events': return PdfColors.green;
+      case 'security events': return PdfColors.orange;
+      default: return PdfColors.grey;
+    }
+  }
+
   String _formatPdfTime(int minutes) {
     int h = ((minutes + widget.utcOffset * 60) ~/ 60) % 24;
     if (h < 0) h += 24;
@@ -2120,6 +2204,54 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
 
     return markers;
+  }
+
+  List<Widget> _buildEventMarkers(DailyActivities day) {
+    List<Widget> markers = [];
+    final targetDate = day.date.toLocal();
+
+    for (var event in widget.driverEvents) {
+      final eDate = event.date.toLocal();
+      if (eDate.year == targetDate.year && eDate.month == targetDate.month && eDate.day == targetDate.day) {
+        markers.add(_buildEventMarker(event));
+      }
+    }
+
+    return markers;
+  }
+
+  Widget _buildEventMarker(DriverEvent event) {
+    final double hour = (event.date.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) % 86400 / 3600.0;
+    final color = _getEventColor(event.type);
+
+    return Positioned(
+      left: hour * _hourWidth - 10.0,
+      top: 85, // Prikaz pod časovnico
+      child: Tooltip(
+        message: "${event.type}: ${event.description}",
+        child: Column(
+          children: [
+            Container(
+              width: 2,
+              height: 10,
+              color: color.withOpacity(0.5),
+            ),
+            Icon(Icons.event_note, size: 20, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getEventColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'operational events': return Colors.blue;
+      case 'driver observations': return Colors.teal;
+      case 'compliance events': return Colors.red;
+      case 'personal events': return Colors.green;
+      case 'security events': return Colors.orange;
+      default: return Colors.grey;
+    }
   }
 
   String _getCountryCode(int code) {

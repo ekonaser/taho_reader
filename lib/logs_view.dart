@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'taho_models.dart';
+import 'event_model.dart';
+import 'openstreetmap.dart';
 
 class LogsView extends StatefulWidget {
   final List<DailyVehicles> vehicles;
   final List<PlaceRecord> places;
   final List<DailyVehiclesG2> vehiclesG2;
   final List<PlaceRecordG2> placesG2;
+  final List<GnssRecord> gnssRecords;
   final Function(double lat, double lon)? onJumpToMap;
 
   const LogsView({
@@ -14,6 +20,7 @@ class LogsView extends StatefulWidget {
     required this.places,
     required this.vehiclesG2,
     required this.placesG2,
+    required this.gnssRecords,
     this.onJumpToMap,
   });
 
@@ -21,7 +28,7 @@ class LogsView extends StatefulWidget {
   State<LogsView> createState() => _LogsViewState();
 }
 
-enum _LogViewMode { vehicles, places }
+enum _LogViewMode { vehicles, places, events }
 
 class _LogsViewState extends State<LogsView> {
   _LogViewMode _viewMode = _LogViewMode.vehicles;
@@ -38,7 +45,7 @@ class _LogsViewState extends State<LogsView> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Container(
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -55,31 +62,45 @@ class _LogsViewState extends State<LogsView> {
                   () => setState(() => _viewMode = _LogViewMode.places),
                   primaryColor
                 ),
+                _buildToggleItem(
+                  "Events",
+                  _viewMode == _LogViewMode.events,
+                  () => setState(() => _viewMode = _LogViewMode.events),
+                  primaryColor
+                ),
               ],
             ),
           ),
         ),
         Expanded(
-          child: _viewMode == _LogViewMode.vehicles
-              ? (widget.vehiclesG2.isNotEmpty
-                  ? ListView.builder(
-                      itemCount: widget.vehiclesG2.length,
-                      itemBuilder: (context, index) => _buildDayCardG2(widget.vehiclesG2[index]),
-                    )
-                  : widget.vehicles.isEmpty
-                      ? _buildEmptyState("No vehicle data found.")
-                      : ListView.builder(
-                          itemCount: widget.vehicles.length,
-                          itemBuilder: (context, index) => _buildDayCard(widget.vehicles[index]),
-                        ))
-              : (widget.placesG2.isNotEmpty
-                  ? _buildPlacesListG2()
-                  : widget.places.isEmpty
-                      ? _buildEmptyState("No place records found.")
-                      : _buildPlacesList()),
+          child: _buildMainContent(),
         ),
       ],
     );
+  }
+
+  Widget _buildMainContent() {
+    if (_viewMode == _LogViewMode.vehicles) {
+      return (widget.vehiclesG2.isNotEmpty
+          ? ListView.builder(
+              itemCount: widget.vehiclesG2.length,
+              itemBuilder: (context, index) => _buildDayCardG2(widget.vehiclesG2[index]),
+            )
+          : widget.vehicles.isEmpty
+              ? _buildEmptyState("No vehicle data found.")
+              : ListView.builder(
+                  itemCount: widget.vehicles.length,
+                  itemBuilder: (context, index) => _buildDayCard(widget.vehicles[index]),
+                ));
+    } else if (_viewMode == _LogViewMode.places) {
+      return (widget.placesG2.isNotEmpty
+          ? _buildPlacesListG2()
+          : widget.places.isEmpty
+              ? _buildEmptyState("No place records found.")
+              : _buildPlacesList());
+    } else {
+      return _buildEventsList();
+    }
   }
 
   Widget _buildEmptyState(String message) {
@@ -118,31 +139,48 @@ class _LogsViewState extends State<LogsView> {
   Widget _buildDayCard(DailyVehicles day) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
+    
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: theme.colorScheme.surface,
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          shape: const Border(),
-          collapsedShape: const Border(),
-          title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
-          leading: Icon(Icons.calendar_month, color: primaryColor),
-          children: day.vehicles.map((v) => ListTile(
-            dense: true,
-            title: Text(v.registration, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              "${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}\n"
-              "${v.startKm} - ${v.endKm}",
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_month, color: primaryColor, size: 24),
+                const SizedBox(width: 12),
+                Text(
+                  day.date.toLocal().toString().split(' ').first,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ],
             ),
-            isThreeLine: true,
-            trailing: Text(
-              "${v.endKm - v.startKm} km",
-              style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-            ),
-          )).toList(),
+            const Divider(height: 24),
+            ...day.vehicles.map((v) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(v.registration, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                      Text("${v.endKm - v.startKm} km", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _detailRow(Icons.access_time, "Duration", "${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}"),
+                  _detailRow(Icons.speed, "Odometer", "${v.startKm} - ${v.endKm} km"),
+                  if (day.vehicles.last != v) const Divider(height: 20, thickness: 0.5),
+                ],
+              ),
+            )),
+          ],
         ),
       ),
     );
@@ -151,54 +189,66 @@ class _LogsViewState extends State<LogsView> {
   Widget _buildDayCardG2(DailyVehiclesG2 day) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
+
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: theme.colorScheme.surface,
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          shape: const Border(),
-          collapsedShape: const Border(),
-          title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
-          leading: Icon(Icons.calendar_month, color: primaryColor),
-          children: day.vehicles.map((v) => ListTile(
-            dense: true,
-            title: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(v.registrationNumber, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(width: 8),
+                Icon(Icons.calendar_month, color: primaryColor, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    day.date.toLocal().toString().split(' ').first,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
-                  child: Text(_getCountryCode(v.registrationNation), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                  child: const Text("GEN 2", style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "${v.firstUse.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.lastUse.toLocal().toString().split(' ')[1].substring(0, 5)}\n"
-                  "${v.odometerBegin} - ${v.odometerEnd} km",
-                ),
-                Text("VIN: ${v.vin}", style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, fontFamily: 'monospace')),
-              ],
-            ),
-            isThreeLine: true,
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  "${v.odometerEnd - v.odometerBegin} km",
-                  style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-                ),
-                Text("B#${v.vuDataBlockCounter}", style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
-              ],
-            ),
-          )).toList(),
+            const Divider(height: 24),
+            ...day.vehicles.map((v) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Text(v.registrationNumber, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+                            child: Text(_getCountryCode(v.registrationNation), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      Text("${v.odometerEnd - v.odometerBegin} km", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _detailRow(Icons.access_time, "Duration", "${v.firstUse.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.lastUse.toLocal().toString().split(' ')[1].substring(0, 5)}"),
+                  _detailRow(Icons.speed, "Odometer", "${v.odometerBegin} - ${v.odometerEnd} km"),
+                  _detailRow(Icons.fingerprint, "VIN", v.vin),
+                  if (day.vehicles.last != v) const Divider(height: 20, thickness: 0.5),
+                ],
+              ),
+            )),
+          ],
         ),
       ),
     );
@@ -263,11 +313,11 @@ class _LogsViewState extends State<LogsView> {
                 ),
                 Text(
                   "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            Divider(height: 24, color: theme.dividerColor.withOpacity(0.1)),
+            Divider(height: 24, color: theme.dividerColor.withValues(alpha: 0.1)),
             _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
             _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
             _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
@@ -316,7 +366,7 @@ class _LogsViewState extends State<LogsView> {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                            decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                             child: const Text("G2", style: TextStyle(color: Colors.blue, fontSize: 9, fontWeight: FontWeight.bold)),
                           ),
                         ],
@@ -330,11 +380,11 @@ class _LogsViewState extends State<LogsView> {
                 ),
                 Text(
                   "0x${place.entryTypeDailyWorkPeriod.toRadixString(16).padLeft(2, '0').toUpperCase()}",
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            Divider(height: 24, color: theme.dividerColor.withOpacity(0.1)),
+            Divider(height: 24, color: theme.dividerColor.withValues(alpha: 0.1)),
             _detailRow(Icons.access_time, "Time", place.entryTime.toLocal().toString().split('.')[0]),
             _detailRow(Icons.speed, "Odometer", "${place.vehicleOdometerValue} km"),
             _detailRow(Icons.public, "Country", _getCountryCode(place.dailyWorkPeriodCountry)),
@@ -469,7 +519,7 @@ class _LogsViewState extends State<LogsView> {
       default:
         return "Unknown ($code)";
     }
-    return "$name";
+    return name;
   }
 
   String _getEntryTypeInfo(int type) {
@@ -482,5 +532,352 @@ class _LogsViewState extends State<LogsView> {
       case 5: return "Assumed by VU (End)";
       default: return "Unknown Entry Type";
     }
+  }
+
+  Widget _buildEventsList() {
+    final box = Hive.box<DriverEvent>('driver_events');
+    final theme = Theme.of(context);
+    
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: InkResponse(
+              onTap: () => _showAddEventDialog(),
+              radius: 25,
+              highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+              splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
+              child: Text(
+                "+",
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w200,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ValueListenableBuilder(
+            valueListenable: box.listenable(),
+            builder: (context, Box<DriverEvent> box, _) {
+              if (box.values.isEmpty) {
+                return _buildEmptyState("No events recorded yet.");
+              }
+
+              final events = box.values.toList().cast<DriverEvent>();
+              // Sort by date descending
+              events.sort((a, b) => b.date.compareTo(a.date));
+
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 20),
+                itemCount: events.length,
+                itemBuilder: (context, index) => _buildEventCard(events[index]),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEventCard(DriverEvent event) {
+    final theme = Theme.of(context);
+    final color = _getEventColor(event.type);
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.event_note, color: color, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        event.type.toUpperCase(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                          fontSize: 11,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      Text(
+                        event.date.toLocal().toString().split('.')[0],
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _exportToGoogleCalendar(event),
+                  icon: const Icon(Icons.calendar_today, color: Colors.blue, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => event.delete(),
+                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            if (event.description.isNotEmpty || (event.location != null && event.location!.isNotEmpty) || (event.latitude != null))
+              Divider(height: 24, color: theme.dividerColor.withValues(alpha: 0.1)),
+            
+            if (event.description.isNotEmpty) ...[
+              const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Text(event.description, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+            ],
+
+            if (event.location != null && event.location!.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(event.location!, style: const TextStyle(fontSize: 13))),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            if (event.latitude != null && event.longitude != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.map, size: 14, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    "Lat: ${event.latitude!.toStringAsFixed(5)}, Lon: ${event.longitude!.toStringAsFixed(5)}",
+                    style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w500),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => widget.onJumpToMap?.call(event.latitude!, event.longitude!),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text("SHOW ON MAP", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+
+            if (event.tags != null && event.tags!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 0,
+                children: event.tags!.map((tag) => Text(
+                  "#$tag",
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
+                )).toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getEventColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'operational events': return Colors.blue;
+      case 'driver observations': return Colors.teal;
+      case 'compliance events': return Colors.red;
+      case 'personal events': return Colors.green;
+      case 'security events': return Colors.orange;
+      default: return Colors.grey;
+    }
+  }
+
+  Future<void> _exportToGoogleCalendar(DriverEvent event) async {
+    final startTime = "${event.date.toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+    final endTime = "${event.date.add(const Duration(hours: 1)).toUtc().toIso8601String().replaceAll('-', '').replaceAll(':', '').split('.').first}Z";
+    
+    final title = Uri.encodeComponent("${event.type}: ${event.description}");
+    final location = Uri.encodeComponent(event.location ?? "");
+    final details = Uri.encodeComponent("${event.description}\n\nTags: ${event.tags?.join(', ') ?? ''}");
+    
+    final url = "https://www.google.com/calendar/render?action=TEMPLATE&text=$title&dates=$startTime/$endTime&details=$details&location=$location";
+    final uri = Uri.parse(url);
+    
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not launch Google Calendar")),
+        );
+      }
+    }
+  }
+
+  void _showAddEventDialog() {
+    final types = [
+      'Operational events',
+      'Driver observations',
+      'Compliance events',
+      'Personal events',
+      'Security events',
+      'Other events'
+    ];
+    String selectedType = types[0];
+    final descController = TextEditingController();
+    final locController = TextEditingController();
+    final tagsController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    double? selectedLat;
+    double? selectedLon;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("New Event"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedType,
+                  decoration: const InputDecoration(labelText: "Event Type"),
+                  items: types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (val) => setDialogState(() => selectedType = val!),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date != null) {
+                      final time = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(selectedDate),
+                      );
+                      if (time != null) {
+                        setDialogState(() {
+                          selectedDate = DateTime(
+                            date.year,
+                            date.month,
+                            date.day,
+                            time.hour,
+                            time.minute,
+                          );
+                        });
+                      }
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: "Date & Time"),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(selectedDate.toLocal().toString().split('.')[0]),
+                        const Icon(Icons.calendar_today, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final LatLng? picked = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => OpenStreetMapScreen(
+                          records: widget.gnssRecords,
+                          isPicker: true,
+                          initialCenter: widget.gnssRecords.isNotEmpty 
+                              ? LatLng(widget.gnssRecords.last.latitude, widget.gnssRecords.last.longitude)
+                              : null,
+                        ),
+                      ),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedLat = picked.latitude;
+                        selectedLon = picked.longitude;
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.map),
+                  label: Text(selectedLat != null ? "Location Selected" : "Pick Location on Map"),
+                ),
+                if (selectedLat != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text("Lat: ${selectedLat!.toStringAsFixed(4)}, Lon: ${selectedLon!.toStringAsFixed(4)}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  ),
+                TextField(
+                  controller: descController,
+                  decoration: const InputDecoration(labelText: "Description"),
+                  maxLines: 2,
+                ),
+                TextField(
+                  controller: locController,
+                  decoration: const InputDecoration(labelText: "Location Name (Optional)"),
+                ),
+                TextField(
+                  controller: tagsController,
+                  decoration: const InputDecoration(labelText: "Tags (space separated)"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+            ElevatedButton(
+              onPressed: () {
+                final newEvent = DriverEvent(
+                  date: selectedDate,
+                  type: selectedType,
+                  description: descController.text,
+                  location: locController.text,
+                  tags: tagsController.text.split(' ').where((t) => t.isNotEmpty).toList(),
+                  latitude: selectedLat,
+                  longitude: selectedLon,
+                );
+                Hive.box<DriverEvent>('driver_events').add(newEvent);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white),
+              child: const Text("SAVE"),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

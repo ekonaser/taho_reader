@@ -8,14 +8,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:latlong2/latlong.dart';
 import 'activity_timeline.dart';
 import 'faults_view.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'event_model.dart';
 import 'logs_view.dart';
-import 'openstreetmap.dart';
-import 'taho_exporter.dart';
 import 'taho_models.dart';
 import 'taho_parser.dart';
 import 'taho_reader.dart';
+import 'taho_exporter.dart';
+import 'openstreetmap.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  if (!Hive.isAdapterRegistered(0)) {
+    Hive.registerAdapter(DriverEventAdapter());
+  }
+  await Hive.openBox<DriverEvent>('driver_events');
   runApp(const TahoApp());
 }
 
@@ -847,6 +855,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
           places: places,
           vehiclesG2: vehiclesG2,
           placesG2: placesG2,
+          gnssRecords: gnssRecords,
           onJumpToMap: (lat, lon) {
             setState(() {
               _mapInitialCenter = LatLng(lat, lon);
@@ -856,18 +865,24 @@ class _TahoDashboardState extends State<TahoDashboard> {
           },
         );
       case 2:
-        return ActivityTimeline(
-          activities: activities,
-          cardId: cardId,
-          selectedDate: _selectedActivityDate,
-          utcOffset: _utcOffset,
-          onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
-          onDateTap: _selectActivityDate,
-          onPrevDay: () => _jumpToActivityDay(1), // Older
-          onNextDay: () => _jumpToActivityDay(-1), // Newer
-          under50km: _under50km,
-          places: places,
-          placesG2: placesG2,
+        return ValueListenableBuilder(
+          valueListenable: Hive.box<DriverEvent>('driver_events').listenable(),
+          builder: (context, Box<DriverEvent> box, _) {
+            return ActivityTimeline(
+              activities: activities,
+              cardId: cardId,
+              selectedDate: _selectedActivityDate,
+              utcOffset: _utcOffset,
+              onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
+              onDateTap: _selectActivityDate,
+              onPrevDay: () => _jumpToActivityDay(1), // Older
+              onNextDay: () => _jumpToActivityDay(-1), // Newer
+              under50km: _under50km,
+              places: places,
+              placesG2: placesG2,
+              driverEvents: box.values.toList(),
+            );
+          },
         );
       case 3:
         return FaultsView(
