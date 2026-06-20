@@ -5,7 +5,7 @@ import 'package:printing/printing.dart';
 import 'taho_models.dart';
 
 class TahoExporter {
-  Uint8List _buildBytes(TahoGen1Card? gen1Card, TahoGen2Card? gen2Card) {
+  Uint8List buildBytes({TahoGen1Card? gen1Card, TahoGen2Card? gen2Card}) {
     final builder = BytesBuilder();
 
     if (gen1Card != null) {
@@ -56,7 +56,7 @@ class TahoExporter {
     TahoGen2Card? gen2Card,
     required String fileName,
   }) async {
-    final bytes = _buildBytes(gen1Card, gen2Card);
+    final bytes = buildBytes(gen1Card: gen1Card, gen2Card: gen2Card);
     if (bytes.isEmpty) return;
 
     String? outputFile = await FilePicker.saveFile(
@@ -76,7 +76,7 @@ class TahoExporter {
     TahoGen2Card? gen2Card,
     required String fileName,
   }) async {
-    final bytes = _buildBytes(gen1Card, gen2Card);
+    final bytes = buildBytes(gen1Card: gen1Card, gen2Card: gen2Card);
     if (bytes.isEmpty) return;
 
     await Printing.sharePdf(

@@ -40,37 +40,63 @@ class _LogsViewState extends State<LogsView> {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isSmallScreen = screenWidth < 360;
+
     return Column(
       children: [
         // Toggle Selector
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                _buildToggleItem(
-                  "Vehicles",
-                  _viewMode == _LogViewMode.vehicles,
-                  () => setState(() => _viewMode = _LogViewMode.vehicles),
-                  primaryColor
+          padding: const EdgeInsets.all(12.0),
+          child: SegmentedButton<_LogViewMode>(
+            segments: [
+              ButtonSegment(
+                value: _LogViewMode.vehicles,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Vehicles',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-                _buildToggleItem(
-                  "Places",
-                  _viewMode == _LogViewMode.places,
-                  () => setState(() => _viewMode = _LogViewMode.places),
-                  primaryColor
+                icon: const Icon(Icons.directions_car),
+              ),
+              ButtonSegment(
+                value: _LogViewMode.places,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Places',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-                _buildToggleItem(
-                  "Events",
-                  _viewMode == _LogViewMode.events,
-                  () => setState(() => _viewMode = _LogViewMode.events),
-                  primaryColor
+                icon: const Icon(Icons.location_on),
+              ),
+              ButtonSegment(
+                value: _LogViewMode.events,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Events',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-              ],
+                icon: const Icon(Icons.event_note),
+              ),
+            ],
+            selected: {_viewMode},
+            onSelectionChanged: (Set<_LogViewMode> newSelection) {
+              setState(() {
+                _viewMode = newSelection.first;
+              });
+            },
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: theme.primaryColor,
+              selectedForegroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(
+                horizontal: isSmallScreen ? 4 : 12,
+                vertical: 8,
+              ),
             ),
           ),
         ),
@@ -110,30 +136,6 @@ class _LogsViewState extends State<LogsView> {
       child: Text(
         message,
         style: const TextStyle(color: Colors.grey),
-      ),
-    );
-  }
-
-  Widget _buildToggleItem(String label, bool isSelected, VoidCallback onTap, Color primaryColor) {
-    final theme = Theme.of(context);
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? primaryColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'activity_timeline.dart';
 import 'faults_view.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'event_model.dart';
+import 'archive_model.dart';
 import 'logs_view.dart';
 import 'taho_models.dart';
 import 'taho_parser.dart';
@@ -23,7 +25,11 @@ void main() async {
   if (!Hive.isAdapterRegistered(0)) {
     Hive.registerAdapter(DriverEventAdapter());
   }
+  if (!Hive.isAdapterRegistered(1)) {
+    Hive.registerAdapter(ArchiveRecordAdapter());
+  }
   await Hive.openBox<DriverEvent>('driver_events');
+  await Hive.openBox<ArchiveRecord>('archive_records');
   runApp(const TahoApp());
 }
 
@@ -100,6 +106,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
   double _loadingProgress = 0.0;
   String _loadingStatus = "";
   int _selectedTabIndex = 0;
+  int _homeSubTabIndex = 0; // 0: Card ID, 1: Archive
   int _utcOffset = 0;
   LatLng? _mapInitialCenter;
   double? _mapInitialZoom;
@@ -332,6 +339,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
         gen1Card = g1.idData.isNotEmpty ? g1 : null;
         gen2Card = g2.idData.isNotEmpty ? g2 : null;
         _updateParsedData();
+        _saveToArchive();
         isLoading = false;
       });
     } catch (e) {
@@ -392,6 +400,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       }
 
       _updateParsedData();
+      _saveToArchive();
 
     } catch (e) {
       if (mounted) {
@@ -837,7 +846,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   String _getTabTitle() {
     switch (_selectedTabIndex) {
-      case 0: return 'Card ID';
+      case 0: return _homeSubTabIndex == 0 ? 'Card ID' : 'Archive';
       case 1: return 'Logs';
       case 2: return 'Activities';
       case 3: return 'Faults';
@@ -909,6 +918,62 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Widget _buildHomeTab() {
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isSmallScreen = screenWidth < 360;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: SegmentedButton<int>(
+            segments: [
+              ButtonSegment(
+                value: 0,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Card ID',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
+                ),
+                icon: const Icon(Icons.badge_outlined),
+              ),
+              ButtonSegment(
+                value: 1,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Archive',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
+                ),
+                icon: const Icon(Icons.archive_outlined),
+              ),
+            ],
+            selected: {_homeSubTabIndex},
+            onSelectionChanged: (Set<int> newSelection) {
+              setState(() {
+                _homeSubTabIndex = newSelection.first;
+              });
+            },
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: primaryGreen,
+              selectedForegroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(
+                horizontal: isSmallScreen ? 4 : 12,
+                vertical: 8,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _homeSubTabIndex == 0 ? _buildCardIdView() : _buildArchiveView(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCardIdView() {
     if (cardId == null) {
       return Center(
         child: Column(
@@ -919,7 +984,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
               icon: const Icon(Icons.upload_file),
               label: const Text('UPLOAD .DDD FILE'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: primaryGreen, foregroundColor: Colors.white,
+                backgroundColor: primaryGreen,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -928,9 +994,10 @@ class _TahoDashboardState extends State<TahoDashboard> {
             ElevatedButton.icon(
               onPressed: _readTachoCard,
               icon: const Icon(Icons.usb),
-              label: const Text('READ TAHO CARD'),
+              label: const Text('READ CARD'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: primaryGreen, foregroundColor: Colors.white,
+                backgroundColor: primaryGreen,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -940,6 +1007,156 @@ class _TahoDashboardState extends State<TahoDashboard> {
       );
     }
     return SingleChildScrollView(child: _buildIdCard());
+  }
+
+  void _saveToArchive() async {
+    if (cardId == null) return;
+    
+    final bytes = TahoExporter().buildBytes(gen1Card: gen1Card, gen2Card: gen2Card);
+    if (bytes.isEmpty) return;
+
+    // Calculate MD5 hash of the bytes to use as a unique key
+    final hash = md5.convert(bytes).toString();
+
+    final archiveBox = Hive.box<ArchiveRecord>('archive_records');
+    
+    final record = ArchiveRecord(
+      cardNumber: cardId!.cardNumber,
+      driverName: '${cardId!.name} ${cardId!.surname}',
+      downloadDate: DateTime.now(),
+      rawBytes: bytes,
+      isGen2: gen2Card != null,
+      fileName: '${cardId!.name}_${cardId!.surname}'.replaceAll(' ', '_'),
+    );
+    
+    // Use hash as key to automatically handle deduplication
+    await archiveBox.put(hash, record);
+  }
+
+  Widget _buildArchiveView() {
+    return ValueListenableBuilder(
+      valueListenable: Hive.box<ArchiveRecord>('archive_records').listenable(),
+      builder: (context, Box<ArchiveRecord> box, _) {
+        final records = box.values.toList().reversed.toList();
+        
+        if (records.isEmpty) {
+          return const Center(child: Text("No archived files found."));
+        }
+
+        return ListView.builder(
+          itemCount: records.length,
+          itemBuilder: (context, index) {
+            final record = records[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: primaryGreen.withOpacity(0.1),
+                  child: Icon(record.isGen2 ? Icons.looks_two : Icons.looks_one, color: primaryGreen),
+                ),
+                title: Text(record.driverName),
+                subtitle: Text("Added to archive: ${record.downloadDate.toLocal().toString().split('.')[0]}"),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.open_in_new),
+                      onPressed: () => _loadFromArchive(record),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      onPressed: () async {
+                        final bool confirm = await showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Delete Record'),
+                            content: Text('Are you sure you want to delete the record for ${record.driverName}?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('CANCEL'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('DELETE', style: TextStyle(color: Colors.redAccent)),
+                              ),
+                            ],
+                          ),
+                        ) ?? false;
+                        if (confirm) {
+                          record.delete();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                onTap: () => _loadFromArchive(record),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _loadFromArchive(ArchiveRecord record) {
+    setState(() => isLoading = true);
+    
+    final s = _extractAllSections(record.rawBytes);
+
+    // Reconstruct Gen 1
+    final g1 = TahoGen1Card(
+      iccData: s['0002_0'] ?? Uint8List(0),
+      icData: s['0005_0'] ?? Uint8List(0),
+      cardCertDATAptr: s['c100_0'] ?? Uint8List(0),
+      CACertDATAptr: s['c108_0'] ?? Uint8List(0),
+      idData: s['0520_0'] ?? Uint8List(0),
+      driverLicenseDATAptr: s['0521_0'] ?? Uint8List(0),
+      activitiesDATAptr: s['0504_0'] ?? Uint8List(0),
+      vehiclesDATAptr: s['0505_0'] ?? Uint8List(0),
+      appIdentification: s['0501_0'] ?? Uint8List(0),
+      cardDownload: s['050e_0'] ?? Uint8List(0),
+      eventsData: s['0502_0'] ?? Uint8List(0),
+      faultsData: s['0503_0'] ?? Uint8List(0),
+      places: s['0506_0'] ?? Uint8List(0),
+      currentUsage: s['0507_0'] ?? Uint8List(0),
+      controlActivityData: s['0508_0'] ?? Uint8List(0),
+      specificConditions: s['0522_0'] ?? Uint8List(0),
+    );
+
+    // Reconstruct Gen 2
+    final g2 = TahoGen2Card(
+      appIdentification: s['0501_2'] ?? Uint8List(0),
+      cardCertDATAptr: s['c100_2'] ?? Uint8List(0),
+      cardSignCertificate: s['c101_2'] ?? Uint8List(0),
+      CACertDATAptr: s['c108_2'] ?? Uint8List(0),
+      linkCertificate: s['c109_2'] ?? Uint8List(0),
+      idData: s['0520_2'] ?? Uint8List(0),
+      cardDownload: s['050e_2'] ?? Uint8List(0),
+      driverLicenseDATAptr: s['0521_2'] ?? Uint8List(0),
+      eventsData: s['0502_2'] ?? Uint8List(0),
+      faultsData: s['0503_2'] ?? Uint8List(0),
+      activitiesDATAptr: s['0504_2'] ?? Uint8List(0),
+      vehiclesDATAptr: s['0505_2'] ?? Uint8List(0),
+      places: s['0506_2'] ?? Uint8List(0),
+      currentUsage: s['0507_2'] ?? Uint8List(0),
+      controlActivityData: s['0508_2'] ?? Uint8List(0),
+      specificConditions: s['0522_2'] ?? Uint8List(0),
+      vehicleUnitsUsed: s['0523_2'] ?? Uint8List(0),
+      GNSS: s['0524_2'] ?? Uint8List(0),
+    );
+
+    setState(() {
+      gen1Card = g1.idData.isNotEmpty ? g1 : null;
+      gen2Card = g2.idData.isNotEmpty ? g2 : null;
+      _updateParsedData();
+      _homeSubTabIndex = 0; // Switch to Card ID view to see loaded data
+      isLoading = false;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Loaded data for ${record.driverName}')),
+    );
   }
 
   Widget _buildVehiclesTab() {
@@ -1198,7 +1415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.1.2")),
+          const ListTile(title: Text("Version"), trailing: Text("1.2.1")),
         ],
       ),
     );

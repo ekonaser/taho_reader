@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
@@ -83,33 +82,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
   }
 
-  Widget _buildToggleItem(BuildContext context, String label, bool isSelected, VoidCallback onTap, Color primaryGreen) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? primaryGreen : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: isSelected
-                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))]
-                : null,
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -137,24 +109,57 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       day = widget.activities.first;
     }
 
+    final bool isSmallScreen = MediaQuery.sizeOf(context).width < 360;
+    final double labelFontSize = isSmallScreen ? 10 : 14;
+    final EdgeInsetsGeometry segmentPadding = EdgeInsets.symmetric(horizontal: isSmallScreen ? 4 : 12, vertical: 8);
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Toggle Selector
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  _buildToggleItem(context, "Daily", _viewMode == _ViewMode.daily, () => setState(() => _viewMode = _ViewMode.daily), primaryGreen),
-                  _buildToggleItem(context, "Periods", _viewMode == _ViewMode.period, () => setState(() => _viewMode = _ViewMode.period), primaryGreen),
-                  _buildToggleItem(context, "Monthly", _viewMode == _ViewMode.monthly, () => setState(() => _viewMode = _ViewMode.monthly), primaryGreen),
+            padding: const EdgeInsets.all(12.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<_ViewMode>(
+                segments: [
+                  ButtonSegment(
+                    value: _ViewMode.daily,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Daily', style: TextStyle(fontSize: labelFontSize)),
+                    ),
+                    icon: const Icon(Icons.calendar_view_day),
+                  ),
+                  ButtonSegment(
+                    value: _ViewMode.period,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Period', style: TextStyle(fontSize: labelFontSize)),
+                    ),
+                    icon: const Icon(Icons.date_range),
+                  ),
+                  ButtonSegment(
+                    value: _ViewMode.monthly,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Monthly', style: TextStyle(fontSize: labelFontSize)),
+                    ),
+                    icon: const Icon(Icons.calendar_month),
+                  ),
                 ],
+                selected: {_viewMode},
+                onSelectionChanged: (Set<_ViewMode> newSelection) {
+                  setState(() {
+                    _viewMode = newSelection.first;
+                  });
+                },
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: primaryGreen,
+                  selectedForegroundColor: Colors.white,
+                  padding: segmentPadding,
+                ),
               ),
             ),
           ),

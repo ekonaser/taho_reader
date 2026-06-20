@@ -30,40 +30,63 @@ class _FaultsViewState extends State<FaultsView> {
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
     
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isSmallScreen = screenWidth < 360;
+
     return Column(
       children: [
-        // Toggle Selector (Same style as ActivityTimeline)
+        // Toggle Selector
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                _buildToggleItem(
-                  context,
-                  "Vehicle", 
-                  _viewMode == _FaultViewMode.vehicle, 
-                  () => setState(() => _viewMode = _FaultViewMode.vehicle), 
-                  primaryGreen
+          padding: const EdgeInsets.all(12.0),
+          child: SegmentedButton<_FaultViewMode>(
+            segments: [
+              ButtonSegment(
+                value: _FaultViewMode.vehicle,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Vehicle',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-                _buildToggleItem(
-                  context,
-                  "Driver", 
-                  _viewMode == _FaultViewMode.driver, 
-                  () => setState(() => _viewMode = _FaultViewMode.driver), 
-                  primaryGreen
+                icon: const Icon(Icons.directions_car),
+              ),
+              ButtonSegment(
+                value: _FaultViewMode.driver,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Driver',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-                _buildToggleItem(
-                  context,
-                  "Overdrive",
-                  _viewMode == _FaultViewMode.appDetected, 
-                  () => setState(() => _viewMode = _FaultViewMode.appDetected), 
-                  primaryGreen
+                icon: const Icon(Icons.person),
+              ),
+              ButtonSegment(
+                value: _FaultViewMode.appDetected,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Overdrive',
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 14),
+                  ),
                 ),
-              ],
+                icon: const Icon(Icons.warning_amber),
+              ),
+            ],
+            selected: {_viewMode},
+            onSelectionChanged: (Set<_FaultViewMode> newSelection) {
+              setState(() {
+                _viewMode = newSelection.first;
+              });
+            },
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: primaryGreen,
+              selectedForegroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(
+                horizontal: isSmallScreen ? 4 : 12,
+                vertical: 8,
+              ),
             ),
           ),
         ),
