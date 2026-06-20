@@ -40,10 +40,19 @@ class TahoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Tacho Reader',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF28B52F), // Iska zelena
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Color(0xFF28B52F), // Odstrani ločilno črto
+        systemNavigationBarContrastEnforced: false, // Prepreči "scrim" (sivino)
+      ),
+      child: MaterialApp(
+        title: 'Tacho Reader',
+        debugShowCheckedModeBanner: false,
+        themeMode: ThemeMode.system,
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: const Color(0xFF28B52F),
@@ -75,6 +84,7 @@ class TahoApp extends StatelessWidget {
         ),
       ),
       home: const TahoDashboard(),
+      ),
     );
   }
 }
