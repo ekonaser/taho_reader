@@ -37,6 +37,8 @@ class ActivityTimeline extends StatefulWidget {
   final List<PlaceRecord> places;
   final List<PlaceRecordG2> placesG2;
   final List<DriverEvent> driverEvents;
+  final int initialViewMode;
+  final Function(int)? onViewModeChanged;
 
   const ActivityTimeline({
     super.key,
@@ -52,6 +54,8 @@ class ActivityTimeline extends StatefulWidget {
     this.places = const [],
     this.placesG2 = const [],
     this.driverEvents = const [],
+    this.initialViewMode = 0,
+    this.onViewModeChanged,
   });
 
   @override
@@ -63,7 +67,7 @@ enum _ViewMode { daily, period, monthly }
 class _ActivityTimelineState extends State<ActivityTimeline> {
   double _hourWidth = 120.0;
   final ActivitySummary _summary = ActivitySummary();
-  _ViewMode _viewMode = _ViewMode.daily;
+  late _ViewMode _viewMode;
   DateTime _selectedMonth = DateTime.now();
   DateTime? _startDate;
   DateTime? _endDate;
@@ -71,6 +75,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   @override
   void initState() {
     super.initState();
+    _viewMode = _ViewMode.values[widget.initialViewMode];
     if (widget.activities.isNotEmpty) {
       _selectedMonth = DateTime(widget.activities.first.date.year, widget.activities.first.date.month);
       // Default period: last 14 days or last available
@@ -89,81 +94,106 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final primaryGreen = theme.primaryColor;
     final double totalWidth = _hourWidth * 27;
 
-    if (widget.activities.isEmpty) {
-      return Center(
-          child: Text("No activity data found.\nUpload a file or read a card.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.onSurfaceVariant)));
-    }
+    final bool isSmallScreen = MediaQuery.sizeOf(context).width < 360;
+    final double labelFontSize = isSmallScreen ? 10 : 14;
+    final EdgeInsetsGeometry segmentPadding = EdgeInsets.symmetric(horizontal: isSmallScreen ? 4 : 12, vertical: 8);
 
-    // Find the day to display in Daily view
-    DailyActivities day;
+    return Column(
+      children: [
+        // Toggle Selector always visible
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: SegmentedButton<_ViewMode>(
+            segments: [
+              ButtonSegment(
+                value: _ViewMode.daily,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Daily', style: TextStyle(fontSize: labelFontSize)),
+                ),
+                icon: const Icon(Icons.calendar_view_day),
+              ),
+              ButtonSegment(
+                value: _ViewMode.period,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Period', style: TextStyle(fontSize: labelFontSize)),
+                ),
+                icon: const Icon(Icons.date_range),
+              ),
+              ButtonSegment(
+                value: _ViewMode.monthly,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Monthly', style: TextStyle(fontSize: labelFontSize)),
+                ),
+                icon: const Icon(Icons.calendar_month),
+              ),
+            ],
+            selected: {_viewMode},
+            onSelectionChanged: (Set<_ViewMode> newSelection) {
+              setState(() {
+                _viewMode = newSelection.first;
+              });
+              widget.onViewModeChanged?.call(_viewMode.index);
+            },
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: primaryGreen,
+              selectedForegroundColor: Colors.white,
+              padding: segmentPadding,
+            ),
+          ),
+        ),
+        Expanded(
+          child: widget.activities.isEmpty
+              ? Center(
+                  child: Text(
+                    "No activity data found.\nUpload a file or read a card.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                )
+              : _buildContent(day: _getCurrentDay()),
+        ),
+      ],
+    );
+  }
+
+  DailyActivities _getCurrentDay() {
+    if (widget.activities.isEmpty) {
+      return DailyActivities(
+        header: ActivityDayHeader(
+          prevLength: 0,
+          currLength: 0,
+          time: DateTime.now(),
+          noActivity: 0,
+          km: 0,
+        ),
+        activities: [],
+      );
+    }
     if (widget.selectedDate != null) {
-      day = widget.activities.firstWhere(
-            (a) => a.date.year == widget.selectedDate!.year &&
+      return widget.activities.firstWhere(
+        (a) =>
+            a.date.year == widget.selectedDate!.year &&
             a.date.month == widget.selectedDate!.month &&
             a.date.day == widget.selectedDate!.day,
         orElse: () => widget.activities.first,
       );
-    } else {
-      day = widget.activities.first;
     }
+    return widget.activities.first;
+  }
 
-    final bool isSmallScreen = MediaQuery.sizeOf(context).width < 360;
-    final double labelFontSize = isSmallScreen ? 10 : 14;
-    final EdgeInsetsGeometry segmentPadding = EdgeInsets.symmetric(horizontal: isSmallScreen ? 4 : 12, vertical: 8);
+  Widget _buildContent({required DailyActivities day}) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final primaryGreen = theme.primaryColor;
+    final double totalWidth = _hourWidth * 27;
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Toggle Selector
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<_ViewMode>(
-                segments: [
-                  ButtonSegment(
-                    value: _ViewMode.daily,
-                    label: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('Daily', style: TextStyle(fontSize: labelFontSize)),
-                    ),
-                    icon: const Icon(Icons.calendar_view_day),
-                  ),
-                  ButtonSegment(
-                    value: _ViewMode.period,
-                    label: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('Period', style: TextStyle(fontSize: labelFontSize)),
-                    ),
-                    icon: const Icon(Icons.date_range),
-                  ),
-                  ButtonSegment(
-                    value: _ViewMode.monthly,
-                    label: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('Monthly', style: TextStyle(fontSize: labelFontSize)),
-                    ),
-                    icon: const Icon(Icons.calendar_month),
-                  ),
-                ],
-                selected: {_viewMode},
-                onSelectionChanged: (Set<_ViewMode> newSelection) {
-                  setState(() {
-                    _viewMode = newSelection.first;
-                  });
-                },
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: primaryGreen,
-                  selectedForegroundColor: Colors.white,
-                  padding: segmentPadding,
-                ),
-              ),
-            ),
-          ),
-
           if (_viewMode == _ViewMode.daily) ...[
             Padding(
               padding: const EdgeInsets.all(16.0),

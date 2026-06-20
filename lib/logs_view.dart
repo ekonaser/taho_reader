@@ -15,6 +15,8 @@ class LogsView extends StatefulWidget {
   final List<PlaceRecordG2> placesG2;
   final List<GnssRecord> gnssRecords;
   final Function(double lat, double lon)? onJumpToMap;
+  final int initialViewMode;
+  final Function(int)? onViewModeChanged;
 
   const LogsView({
     super.key,
@@ -24,6 +26,8 @@ class LogsView extends StatefulWidget {
     required this.placesG2,
     required this.gnssRecords,
     this.onJumpToMap,
+    this.initialViewMode = 0,
+    this.onViewModeChanged,
   });
 
   @override
@@ -33,7 +37,13 @@ class LogsView extends StatefulWidget {
 enum _LogViewMode { vehicles, places, events }
 
 class _LogsViewState extends State<LogsView> {
-  _LogViewMode _viewMode = _LogViewMode.vehicles;
+  late _LogViewMode _viewMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewMode = _LogViewMode.values[widget.initialViewMode];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +99,7 @@ class _LogsViewState extends State<LogsView> {
               setState(() {
                 _viewMode = newSelection.first;
               });
+              widget.onViewModeChanged?.call(_viewMode.index);
             },
             style: SegmentedButton.styleFrom(
               selectedBackgroundColor: theme.primaryColor,
@@ -135,7 +146,7 @@ class _LogsViewState extends State<LogsView> {
     return Center(
       child: Text(
         message,
-        style: const TextStyle(color: Colors.grey),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     );
   }

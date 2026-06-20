@@ -6,6 +6,8 @@ class FaultsView extends StatefulWidget {
   final List<TahoFault> driverEvents;
   final List<TahoFault> detectedEvents;
   final Function(DateTime)? onNavigateToDay;
+  final int initialViewMode;
+  final Function(int)? onViewModeChanged;
 
   const FaultsView({
     super.key,
@@ -13,6 +15,8 @@ class FaultsView extends StatefulWidget {
     required this.driverEvents,
     this.detectedEvents = const [],
     this.onNavigateToDay,
+    this.initialViewMode = 0,
+    this.onViewModeChanged,
   });
 
   @override
@@ -22,7 +26,13 @@ class FaultsView extends StatefulWidget {
 enum _FaultViewMode { vehicle, driver, appDetected }
 
 class _FaultsViewState extends State<FaultsView> {
-  _FaultViewMode _viewMode = _FaultViewMode.vehicle;
+  late _FaultViewMode _viewMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewMode = _FaultViewMode.values[widget.initialViewMode];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +89,7 @@ class _FaultsViewState extends State<FaultsView> {
               setState(() {
                 _viewMode = newSelection.first;
               });
+              widget.onViewModeChanged?.call(_viewMode.index);
             },
             style: SegmentedButton.styleFrom(
               selectedBackgroundColor: primaryGreen,

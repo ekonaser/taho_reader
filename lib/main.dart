@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:latlong2/latlong.dart';
 import 'activity_timeline.dart';
 import 'faults_view.dart';
@@ -107,6 +109,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
   String _loadingStatus = "";
   int _selectedTabIndex = 0;
   int _homeSubTabIndex = 0; // 0: Card ID, 1: Archive
+  int _logsSubTabIndex = 0;
+  int _activitiesSubTabIndex = 0;
+  int _faultsSubTabIndex = 0;
   int _utcOffset = 0;
   LatLng? _mapInitialCenter;
   double? _mapInitialZoom;
@@ -269,7 +274,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       int b2 = bytes[i + 1];
       int gen = bytes[i + 2];
       int len = (bytes[i + 3] << 8) | bytes[i + 4];
-      
+
       if (i + 5 + len <= bytes.length) {
         String key = "${b1.toRadixString(16).padLeft(2, '0')}${b2.toRadixString(16).padLeft(2, '0')}_$gen";
         sections[key] = bytes.sublist(i + 5, i + 5 + len);
@@ -361,7 +366,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       if (!await _tahoReader.init()) throw 'USB reader not available';
       setState(() => _loadingStatus = "Resetting card...");
-      await _tahoReader.getATR(); 
+      await _tahoReader.getATR();
       if (!await _tahoReader.isConnected()) throw 'Reader not connected';
       if (!await _tahoReader.isCardPresent()) throw 'Card not detected';
 
@@ -430,66 +435,66 @@ class _TahoDashboardState extends State<TahoDashboard> {
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x02]));
     update(0, "Reading ICC (Gen 1)...");
     final iccData = await _tahoReader.readData(25);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x05]));
     update(25, "Reading IC (Gen 1)...");
     final icData = await _tahoReader.readData(8);
 
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x54, 0x41, 0x43, 0x48, 0x4F]));
     update(8, "Selecting Tacho App...");
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
     update(0, "Reading Card Certificate...");
     final cardCert = await _tahoReader.readData(194);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
     update(194, "Reading CA Certificate...");
     final caCert = await _tahoReader.readData(194);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
     update(194, "Reading Identification...");
     final idData = await _tahoReader.readData(143);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
     update(143, "Reading Driver License...");
     final license = await _tahoReader.readData(53);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
     update(53, "Reading Activities...");
     final activities = await _tahoReader.readData(13780);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
     update(13780, "Reading Vehicles Used...");
     final vehicles = await _tahoReader.readData(6202);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
     update(6202, "Reading App Identification...");
     final appId = await _tahoReader.readData(10);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
     update(10, "Reading Download Status...");
     final download = await _tahoReader.readData(4);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
     update(4, "Reading Events...");
     final events = await _tahoReader.readData(1728);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
     update(1728, "Reading Faults...");
     final faults = await _tahoReader.readData(1152);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
     update(1152, "Reading Places...");
     final places = await _tahoReader.readData(1121);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
     update(1121, "Reading Current Usage...");
     final usage = await _tahoReader.readData(19);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
     update(19, "Reading Control Activity...");
     final control = await _tahoReader.readData(46);
-    
+
     await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
     update(46, "Reading Specific Conditions...");
     final conditions = await _tahoReader.readData(280);
@@ -663,7 +668,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   void _jumpToActivityDay(int delta) {
     if (activities.isEmpty) return;
-    
+
     // Sort activities by date (descending: newest first)
     final sortedActivities = List<DailyActivities>.from(activities);
     sortedActivities.sort((a, b) => b.date.compareTo(a.date));
@@ -671,17 +676,17 @@ class _TahoDashboardState extends State<TahoDashboard> {
     // Find current index
     DateTime current = _selectedActivityDate ?? sortedActivities.first.date;
     int index = sortedActivities.indexWhere((a) =>
-        a.date.year == current.year &&
+    a.date.year == current.year &&
         a.date.month == current.month &&
         a.date.day == current.day);
 
     if (index == -1) index = 0;
 
-    // In a descending list: 
+    // In a descending list:
     // delta -1 (Next/Newer) means index decreases
     // delta +1 (Prev/Older) means index increases
     int newIndex = index + delta;
-    
+
     if (newIndex >= 0 && newIndex < sortedActivities.length) {
       setState(() {
         _selectedActivityDate = sortedActivities[newIndex].date;
@@ -792,31 +797,31 @@ class _TahoDashboardState extends State<TahoDashboard> {
             ),
           ],
         ),
-        body: isLoading 
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(
-                    value: _loadingProgress > 0 ? _loadingProgress : null,
-                    color: primaryGreen,
-                    strokeWidth: 6,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    "${(_loadingProgress * 100).toInt()}%",
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryGreen),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _loadingStatus,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-                ],
+        body: isLoading
+            ? Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                value: _loadingProgress > 0 ? _loadingProgress : null,
+                color: primaryGreen,
+                strokeWidth: 6,
               ),
-            )
-          : _buildTabContent(),
+              const SizedBox(height: 24),
+              Text(
+                "${(_loadingProgress * 100).toInt()}%",
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryGreen),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _loadingStatus,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        )
+            : _buildTabContent(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedTabIndex,
           onTap: (index) {
@@ -846,18 +851,28 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   String _getTabTitle() {
     switch (_selectedTabIndex) {
-      case 0: return _homeSubTabIndex == 0 ? 'Card ID' : 'Archive';
-      case 1: return 'Logs';
-      case 2: return 'Activities';
-      case 3: return 'Faults';
-      case 4: return 'GNSS';
-      default: return 'Tacho Reader';
+      case 0:
+        return _homeSubTabIndex == 0 ? 'Card ID' : 'Archive';
+      case 1:
+        final labels = ['Vehicles', 'Places', 'Events'];
+        return labels[_logsSubTabIndex];
+      case 2:
+        final labels = ['Daily', 'Period', 'Monthly'];
+        return labels[_activitiesSubTabIndex];
+      case 3:
+        final labels = ['Vehicle', 'Driver', 'Overdrive'];
+        return labels[_faultsSubTabIndex];
+      case 4:
+        return 'GNSS';
+      default:
+        return 'Tacho Reader';
     }
   }
 
   Widget _buildTabContent() {
     switch (_selectedTabIndex) {
-      case 0: return _buildHomeTab();
+      case 0:
+        return _buildHomeTab();
       case 1:
         return LogsView(
           vehicles: vehicles,
@@ -865,6 +880,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehiclesG2: vehiclesG2,
           placesG2: placesG2,
           gnssRecords: gnssRecords,
+          initialViewMode: _logsSubTabIndex,
+          onViewModeChanged: (index) => setState(() => _logsSubTabIndex = index),
           onJumpToMap: (lat, lon) {
             setState(() {
               _mapInitialCenter = LatLng(lat, lon);
@@ -890,6 +907,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
               places: places,
               placesG2: placesG2,
               driverEvents: box.values.toList(),
+              initialViewMode: _activitiesSubTabIndex,
+              onViewModeChanged: (index) => setState(() => _activitiesSubTabIndex = index),
             );
           },
         );
@@ -898,6 +917,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           vehicleFaults: vehicleFaults,
           driverEvents: driverEvents,
           detectedEvents: detectedEvents,
+          initialViewMode: _faultsSubTabIndex,
+          onViewModeChanged: (index) => setState(() => _faultsSubTabIndex = index),
           onNavigateToDay: (date) {
             setState(() {
               // Normalize to start of day to match Activities logic
@@ -1011,7 +1032,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   void _saveToArchive() async {
     if (cardId == null) return;
-    
+
     final bytes = TahoExporter().buildBytes(gen1Card: gen1Card, gen2Card: gen2Card);
     if (bytes.isEmpty) return;
 
@@ -1019,7 +1040,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
     final hash = md5.convert(bytes).toString();
 
     final archiveBox = Hive.box<ArchiveRecord>('archive_records');
-    
+
     final record = ArchiveRecord(
       cardNumber: cardId!.cardNumber,
       driverName: '${cardId!.name} ${cardId!.surname}',
@@ -1028,7 +1049,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       isGen2: gen2Card != null,
       fileName: '${cardId!.name}_${cardId!.surname}'.replaceAll(' ', '_'),
     );
-    
+
     // Use hash as key to automatically handle deduplication
     await archiveBox.put(hash, record);
   }
@@ -1038,7 +1059,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       valueListenable: Hive.box<ArchiveRecord>('archive_records').listenable(),
       builder: (context, Box<ArchiveRecord> box, _) {
         final records = box.values.toList().reversed.toList();
-        
+
         if (records.isEmpty) {
           return const Center(child: Text("No archived files found."));
         }
@@ -1101,7 +1122,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
   void _loadFromArchive(ArchiveRecord record) {
     setState(() => isLoading = true);
-    
+
     final s = _extractAllSections(record.rawBytes);
 
     // Reconstruct Gen 1
@@ -1153,7 +1174,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
       _homeSubTabIndex = 0; // Switch to Card ID view to see loaded data
       isLoading = false;
     });
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Loaded data for ${record.driverName}')),
     );
@@ -1398,11 +1419,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text("Privacy Policy"),
-                  content: const SingleChildScrollView(
-                    child: Text(
-                      "This application processes all tachograph data locally on your device. "
-                      "No personal data or card information is uploaded to any server. "
-                      "Application uses only the device's USB and Internet permissions strictly for card reading and GNSS mapping.",
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "This application processes all tachograph data locally on your device. "
+                          "No personal data or card information is uploaded to any server. "
+                          "Application uses only the device's USB and Internet permissions strictly for card reading and GNSS mapping.",
+                        ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                          children: [
+                            const Text("Full privacy policy is available "),
+                            InkWell(
+                              onTap: () {
+                                Navigator.pop(context); // Close dialog
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const PrivacyPolicyWebView(
+                                      url: "https://ekonaser.github.io/Privacy-Policy---TahoReader/",
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: const Text(
+                                "here",
+                                style: TextStyle(
+                                  color: Color(0xFF28B52F),
+                                  decoration: TextDecoration.underline,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   actions: [
@@ -1416,6 +1470,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const ListTile(title: Text("Version"), trailing: Text("1.2.1")),
+        ],
+      ),
+    );
+  }
+}
+
+class PrivacyPolicyWebView extends StatefulWidget {
+  final String url;
+  const PrivacyPolicyWebView({super.key, required this.url});
+
+  @override
+  State<PrivacyPolicyWebView> createState() => _PrivacyPolicyWebViewState();
+}
+
+class _PrivacyPolicyWebViewState extends State<PrivacyPolicyWebView> {
+  late final WebViewController _controller;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            setState(() {
+              _isLoading = false;
+            });
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Privacy Policy"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.open_in_new),
+            onPressed: () => launchUrl(Uri.parse(widget.url), mode: LaunchMode.externalApplication),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator(color: Color(0xFF28B52F))),
         ],
       ),
     );
