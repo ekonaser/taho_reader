@@ -179,11 +179,66 @@ class MainActivity : FlutterActivity() {
       }
     }
 
-    return inEndpoint != null && outEndpoint != null
+    if (inEndpoint != null && outEndpoint != null) {
+      performHardwareReset()
+      return true
+    }
+    return false
+  }
+
+  private fun performHardwareReset() {
+    val connection = usbConnection ?: return
+    val input = inEndpoint ?: return
+    val output = outEndpoint ?: return
+
+    println("DEBUG: Starting Aggressive Hardware Reset...")
+    
+    // 1. Reset zaporedne številke
+    sequenceNumber = 0
+
+    // 2. Izprazni USB buffer (drain)
+    val drainBuffer = ByteArray(2048)
+    while (connection.bulkTransfer(input, drainBuffer, drainBuffer.size, 50) > 0) {}
+
+    // 3. ICC Power Off (0x63)
+    val offCmd = byteArrayOf(0x63, 0, 0, 0, 0, 0, (sequenceNumber++ and 0xFF).toByte(), 0, 0, 0)
+    connection.bulkTransfer(output, offCmd, offCmd.size, 500)
+    
+    // Preberemo odgovor za Power Off
+    connection.bulkTransfer(input, drainBuffer, drainBuffer.size, 500)
+    
+    try { Thread.sleep(300) } catch (e: Exception) {}
+
+    // 4. ICC Power On (0x62)
+    println("DEBUG: Sending ICC Power On...")
+    val onCmd = byteArrayOf(0x62, 0, 0, 0, 0, 0, (sequenceNumber++ and 0xFF).toByte(), 0x01, 0, 0)
+    connection.bulkTransfer(output, onCmd, onCmd.size, 1000)
+
+    val atrBuffer = ByteArray(512)
+    val received = connection.bulkTransfer(input, atrBuffer, atrBuffer.size, 1000)
+    
+    if (received >= 10 && (atrBuffer[0].toInt() and 0xFF) == 0x80) {
+        val len = (atrBuffer[1].toInt() and 0xFF) or ((atrBuffer[2].toInt() and 0xFF) shl 8)
+        if (len > 0 && len + 10 <= received) {
+            lastAtr = atrBuffer.copyOfRange(10, 10 + len)
+            println("DEBUG: Reset successful, ATR received.")
+            setT0Parameters()
+        }
+    } else {
+        println("DEBUG: Power On failed. Response: ${if (received >= 10) String.format("%02X", atrBuffer[7].toInt() and 0xFF) else "Timeout"}")
+        lastAtr = null
+    }
   }
 
   private fun closeUsbConnection() {
     try {
+      // Send PC_to_RDR_IccPowerOff (0x63) before closing
+      val connection = usbConnection
+      val out = outEndpoint
+      if (connection != null && out != null) {
+        val cmd = byteArrayOf(0x63, 0, 0, 0, 0, 0, (sequenceNumber++ and 0xFF).toByte(), 0, 0, 0)
+        connection.bulkTransfer(out, cmd, cmd.size, 500)
+      }
       usbConnection?.releaseInterface(usbInterface)
       usbConnection?.close()
     } catch (_: Exception) {}
@@ -191,6 +246,7 @@ class MainActivity : FlutterActivity() {
     usbInterface = null
     inEndpoint = null
     outEndpoint = null
+    lastAtr = null // Reset ATR cache
   }
 
   // ---------------- READ DATA (UPORABA ITERATOR2023) ----------------
@@ -273,7 +329,7 @@ class MainActivity : FlutterActivity() {
 
     // 1. Pošiljanje ukaza
     val wrappedCommand = buildCcIdXfrBlock(command)
-    val sent = connection.bulkTransfer(out, wrappedCommand, wrappedCommand.size, 5000)
+    val sent = connection.bulkTransfer(out, wrappedCommand, wrappedCommand.size, 2000)
     if (sent < 0) throw IOException("CCID Send failed")
 
     println("CCID SENT: " + command.joinToString("") { String.format("%02X", it.toInt() and 0xFF) })
@@ -284,16 +340,21 @@ class MainActivity : FlutterActivity() {
     // 2. Branje odgovora (z zanko za Time Extension in sestavljanje paketov)
     while (true) {
       val tempBuffer = ByteArray(4096)
-      val received = connection.bulkTransfer(input, tempBuffer, tempBuffer.size, 5000)
+      val received = connection.bulkTransfer(input, tempBuffer, tempBuffer.size, 2000)
 
       if (received < 10) throw IOException("CCID Receive failed (too short: $received)")
 
       val ccidStatus = tempBuffer[7].toInt() and 0xFF
+      val commandStatus = (ccidStatus shr 6) and 0x03
 
-      // Če je kartica še zaposlena (Time Extension 0x40), čakamo naprej
-      if ((ccidStatus and 0x40) != 0) {
-        println("DEBUG: Card busy (0x40), waiting...")
+      // Če je kartica še zaposlena (Time Extension - status 2), čakamo naprej
+      if (commandStatus == 2) {
+        println("DEBUG: Card busy (Time Extension), waiting...")
         continue
+      }
+      
+      if (commandStatus == 1) {
+        throw IOException("CCID Command failed (status 1 - check card presence)")
       }
 
       // Izračunamo pričakovano dolžino iz CCID glave (bazičnih 10 bajtov + podatki)
@@ -352,10 +413,10 @@ class MainActivity : FlutterActivity() {
 
       // PC_to_RDR_IccPowerOn (0x62) s 5V (0x01)
       val cmd = byteArrayOf(0x62, 0, 0, 0, 0, 0, (sequenceNumber++ and 0xFF).toByte(), 0x01, 0, 0)
-      connection.bulkTransfer(out, cmd, cmd.size, 5000)
+      connection.bulkTransfer(out, cmd, cmd.size, 2000)
 
       val buffer = ByteArray(512)
-      val received = connection.bulkTransfer(input, buffer, buffer.size, 5000)
+      val received = connection.bulkTransfer(input, buffer, buffer.size, 2000)
       if (received >= 10 && (buffer[0].toInt() and 0xFF) == 0x80) {
         val len = (buffer[1].toInt() and 0xFF) or ((buffer[2].toInt() and 0xFF) shl 8)
         lastAtr = buffer.copyOfRange(10, 10 + len)

@@ -371,12 +371,23 @@ class _TahoDashboardState extends State<TahoDashboard> {
       setState(() {
         isLoading = true;
         _loadingProgress = 0.0;
-        _loadingStatus = "Connecting to reader...";
+        _loadingStatus = "Resetting reader...";
       });
 
+      // Prisili zaprtje prejšnje seje in sprostitev USB resursov
+      try {
+        await _tahoReader.dispose();
+        await Future.delayed(const Duration(milliseconds: 500));
+      } catch (e) {
+        developer.log("Reset failed (normal if first run): $e");
+      }
+
+      setState(() => _loadingStatus = "Connecting to reader...");
       if (!await _tahoReader.init()) throw 'USB reader not available';
+      
       setState(() => _loadingStatus = "Resetting card...");
       await _tahoReader.getATR();
+
       if (!await _tahoReader.isConnected()) throw 'Reader not connected';
       if (!await _tahoReader.isCardPresent()) throw 'Card not detected';
 
