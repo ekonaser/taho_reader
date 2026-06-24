@@ -1,28 +1,10 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'pdf_helper.dart';
+import 'taho_pdf_generator.dart';
 import 'event_model.dart';
 
-class ActivitySummary {
-  int rest = 0;
-  int availability = 0;
-  int work = 0;
-  int driving = 0;
-  int overdrive = 0;
-
-  void reset() {
-    rest = 0;
-    availability = 0;
-    work = 0;
-    driving = 0;
-    overdrive = 0;
-  }
-}
 
 class ActivityTimeline extends StatefulWidget {
   final List<DailyActivities> activities;
@@ -37,6 +19,9 @@ class ActivityTimeline extends StatefulWidget {
   final List<PlaceRecord> places;
   final List<PlaceRecordG2> placesG2;
   final List<DriverEvent> driverEvents;
+  final List<DailyVehicles> vehicles;
+  final List<DailyVehiclesG2> vehiclesG2;
+  final bool isGen2View;
   final int initialViewMode;
   final Function(int)? onViewModeChanged;
 
@@ -54,6 +39,9 @@ class ActivityTimeline extends StatefulWidget {
     this.places = const [],
     this.placesG2 = const [],
     this.driverEvents = const [],
+    this.vehicles = const [],
+    this.vehiclesG2 = const [],
+    this.isGen2View = false,
     this.initialViewMode = 0,
     this.onViewModeChanged,
   });
@@ -783,7 +771,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Share PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportToPdf(day, primaryGreen, share: true);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  share: true,
+                );
               },
             ),
             ListTile(
@@ -791,7 +790,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Open PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportToPdf(day, primaryGreen, openImmediately: true);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  openImmediately: true,
+                );
               },
             ),
             ListTile(
@@ -799,7 +809,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Save PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportToPdf(day, primaryGreen, openImmediately: false);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  openImmediately: false,
+                );
               },
             ),
           ],
@@ -808,215 +829,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Future<void> _exportToPdf(DailyActivities day, Color primaryGreen, {bool openImmediately = false, bool share = false}) async {
-    // Filter events for this day at the beginning
-    final dayEvents = widget.driverEvents.where((e) => 
-      e.date.year == day.date.year && e.date.month == day.date.month && e.date.day == day.date.day).toList();
-    dayEvents.sort((a, b) => b.date.compareTo(a.date));
-
-    final doc = pw.Document();
-    final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
-    final dateStr = day.date.toLocal().toString().split(' ').first;
-    final utcStr = "UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}";
-
-    // Calculate totals for the PDF
-    final pdfSummary = _calculateDaySummary(day);
-    String formatDur(int mins) {
-      return "${(mins ~/ 60).toString().padLeft(2, '0')}:${(mins % 60).toString().padLeft(2, '0')}";
-    }
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (context) => pw.Column(
-          children: [
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text("Activity Report",
-                        style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-                    pw.Text("Date: $dateStr", style: const pw.TextStyle(fontSize: 14)),
-                  ],
-                ),
-                pw.Text(utcStr, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-            pw.SizedBox(height: 10),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-          ],
-        ),
-        build: (pw.Context context) {
-          return [
-            // Driver Information Section
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text("DRIVER DETAILS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                      pw.SizedBox(height: 4),
-                      pw.Text("${widget.cardId?.name ?? 'Unknown'} ${widget.cardId?.surname ?? ''}",
-                          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                      pw.Text("Card: ${widget.cardId?.cardNumber ?? 'N/A'}", style: const pw.TextStyle(fontSize: 12)),
-                      pw.Text("Birthday: ${widget.cardId?.formattedBirthday ?? 'N/A'}", style: const pw.TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text("DAILY TOTALS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                      pw.SizedBox(height: 4),
-                      _pdfSummaryRow("Driving:", formatDur(pdfSummary.driving), PdfColors.blue),
-                      _pdfSummaryRow("Work:", formatDur(pdfSummary.work), PdfColors.orange),
-                      _pdfSummaryRow("Availability:", formatDur(pdfSummary.availability), PdfColors.grey),
-                      _pdfSummaryRow("Rest:", formatDur(pdfSummary.rest), pdfPrimaryGreen),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 20),
-            pw.Text("DETAILED ACTIVITY LOG", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-            pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
-            pw.SizedBox(height: 5),
-            ..._buildPdfActivityLog(day, pdfPrimaryGreen),
-
-            if (dayEvents.isNotEmpty) ...[
-              pw.SizedBox(height: 20),
-              pw.Text("DRIVER EVENTS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-              pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
-              pw.SizedBox(height: 5),
-              ...dayEvents.map((event) => pw.Container(
-                padding: const pw.EdgeInsets.symmetric(vertical: 4),
-                decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text(event.type.toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _getPdfEventColor(event.type))),
-                        pw.Text(event.date.toLocal().toString().split('.')[0], style: const pw.TextStyle(fontSize: 9)),
-                      ],
-                    ),
-                    pw.SizedBox(height: 2),
-                    pw.Text(event.description, style: const pw.TextStyle(fontSize: 10)),
-                    if (event.location != null && event.location!.isNotEmpty)
-                      pw.Text("Location: ${event.location}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-                  ],
-                ),
-              )).toList(),
-            ],
-          ];
-        },
-      ),
-    );
-
-    // Add Detailed Landscape Page for high-detail Timeline
-    // Using A3 Landscape for maximum detail as requested by user
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a3.landscape,
-        build: (pw.Context context) {
-          final format = PdfPageFormat.a3.landscape;
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text("HIGH-DETAIL ACTIVITY TIMELINE (A3)",
-                          style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-                      pw.Text("Driver: ${widget.cardId?.name} ${widget.cardId?.surname} | Date: $dateStr | $utcStr",
-                          style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
-                    ],
-                  ),
-                  pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: pdfPrimaryGreen, width: 1.5),
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    ),
-                    child: pw.Text("HIGH RESOLUTION", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-                  ),
-                ],
-              ),
-              pw.Expanded(
-                child: pw.Center(
-                  child: _buildDetailedLandscapeTimeline(day, pdfPrimaryGreen, format),
-                ),
-              ),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                children: [
-                  _pdfLegendItem("Rest", pdfPrimaryGreen, 0),
-                  pw.SizedBox(width: 30),
-                  _pdfLegendItem("Work", PdfColors.orange, 2),
-                  pw.SizedBox(width: 30),
-                  _pdfLegendItem("Availability", PdfColors.grey, 1),
-                  pw.SizedBox(width: 30),
-                  _pdfLegendItem("Driving", PdfColors.blue, 3),
-                  pw.SizedBox(width: 30),
-                  _pdfLegendItem("Session", PdfColors.black, -1),
-                  pw.SizedBox(width: 30),
-                  _pdfLegendItem("Crew", PdfColors.indigo, -2),
-                ],
-              ),
-              pw.SizedBox(height: 20),
-            ],
-          );
-        },
-      ),
-    );
-
-    final fileName = 'ActivityLog_$dateStr';
-    File? file;
-
-    if (share) {
-      await SaveAndOpenDocument.sharePdf(
-        name: "Daily_$dateStr",
-        pdf: doc,
-      );
-      return;
-    } else if (openImmediately) {
-      file = await SaveAndOpenDocument.savePdfToCache(
-        pdf: doc,
-      );
-    } else {
-      file = await SaveAndOpenDocument.savePdfWithPicker(
-        name: fileName,
-        pdf: doc,
-      );
-    }
-
-    if (file == null) return;
-
-    if (openImmediately) {
-      await SaveAndOpenDocument.openFile(file);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("PDF saved to ${file.path}")),
-        );
-      }
-    }
+  void _showDailyExportOptions(DailyActivities day, Color primaryGreen) {
+    // This method is now redundant as its logic was merged into _showExportOptions
   }
 
   void _showSummaryExportOptions(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen) {
@@ -1031,7 +845,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Share Summary PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, share: true);
+                TachoPdfGenerator.exportSummaryReport(
+                  days: days,
+                  title: title,
+                  rangeStr: rangeStr,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  allEvents: widget.driverEvents,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  share: true,
+                );
               },
             ),
             ListTile(
@@ -1039,7 +863,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Open Summary PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, openImmediately: true);
+                TachoPdfGenerator.exportSummaryReport(
+                  days: days,
+                  title: title,
+                  rangeStr: rangeStr,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  allEvents: widget.driverEvents,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  openImmediately: true,
+                );
               },
             ),
             ListTile(
@@ -1047,7 +881,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Save Summary PDF'),
               onTap: () {
                 Navigator.pop(context);
-                _exportSummaryToPdf(days, title, rangeStr, primaryGreen, openImmediately: false);
+                TachoPdfGenerator.exportSummaryReport(
+                  days: days,
+                  title: title,
+                  rangeStr: rangeStr,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  allEvents: widget.driverEvents,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  openImmediately: false,
+                );
               },
             ),
           ],
@@ -1056,801 +900,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Future<void> _exportSummaryToPdf(List<DailyActivities> days, String title, String rangeStr, Color primaryGreen, {bool openImmediately = false, bool share = false}) async {
-    final doc = pw.Document();
-    final pdfPrimaryGreen = PdfColor.fromInt(primaryGreen.toARGB32());
-    final summary = _calculateSummary(days);
-
-    String formatDur(int mins) {
-      final h = mins ~/ 60;
-      final m = mins % 60;
-      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
-    }
-
-    // Collect all unique events for the summary
-    final eventsInPeriod = widget.driverEvents.where((e) {
-      return days.any((d) => 
-        e.date.year == d.date.year && 
-        e.date.month == d.date.month && 
-        e.date.day == d.date.day
-      );
-    }).toList();
-    eventsInPeriod.sort((a, b) => b.date.compareTo(a.date));
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (context) => pw.Column(
-          children: [
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(title, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-                    pw.Text("Period: $rangeStr", style: const pw.TextStyle(fontSize: 14)),
-                  ],
-                ),
-                pw.Text("UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}",
-                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-            pw.SizedBox(height: 10),
-            pw.Divider(thickness: 0.5),
-            pw.SizedBox(height: 10),
-          ],
-        ),
-        build: (context) => [
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text("DRIVER DETAILS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                    pw.SizedBox(height: 4),
-                    pw.Text("${widget.cardId?.name ?? 'Unknown'} ${widget.cardId?.surname ?? ''}",
-                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                    pw.Text("Card: ${widget.cardId?.cardNumber ?? 'N/A'}", style: const pw.TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(8),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey300),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text("GRAND TOTALS", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-                    pw.SizedBox(height: 4),
-                    _pdfSummaryRow("Driving:", formatDur(summary.driving), PdfColors.blue),
-                    _pdfSummaryRow("Work:", formatDur(summary.work), PdfColors.orange),
-                    _pdfSummaryRow("Availability:", formatDur(summary.availability), PdfColors.grey),
-                    _pdfSummaryRow("Rest:", formatDur(summary.rest), pdfPrimaryGreen),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          pw.SizedBox(height: 20),
-          pw.Text("DAILY BREAKDOWN", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-          pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
-          pw.SizedBox(height: 5),
-          pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
-            data: days.map((day) {
-              final s = _calculateDaySummary(day);
-              return [
-                day.date.toLocal().toString().split(' ').first,
-                formatDur(s.driving),
-                formatDur(s.work),
-                formatDur(s.availability),
-                formatDur(s.rest),
-              ];
-            }).toList(),
-          ),
-
-          if (eventsInPeriod.isNotEmpty) ...[
-            pw.SizedBox(height: 20),
-            pw.Text("DRIVER EVENTS LOG", style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfPrimaryGreen)),
-            pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
-            pw.SizedBox(height: 5),
-            ...eventsInPeriod.map((event) => pw.Container(
-              padding: const pw.EdgeInsets.symmetric(vertical: 4),
-              decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text(event.type.toUpperCase(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _getPdfEventColor(event.type))),
-                      pw.Text(event.date.toLocal().toString().split('.')[0], style: const pw.TextStyle(fontSize: 9)),
-                    ],
-                  ),
-                  pw.SizedBox(height: 2),
-                  pw.Text(event.description, style: const pw.TextStyle(fontSize: 10)),
-                  if (event.location != null && event.location!.isNotEmpty)
-                    pw.Text("Location: ${event.location}", style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-                ],
-              ),
-            )).toList(),
-          ],
-        ],
-      ),
-    );
-
-    final fileName = '${title.replaceAll(' ', '_')}_$rangeStr';
-    File? file;
-
-    if (share) {
-      await SaveAndOpenDocument.sharePdf(
-        name: fileName,
-        pdf: doc,
-      );
-      return;
-    } else if (openImmediately) {
-      file = await SaveAndOpenDocument.savePdfToCache(
-        pdf: doc,
-      );
-    } else {
-      file = await SaveAndOpenDocument.savePdfWithPicker(
-        name: fileName,
-        pdf: doc,
-      );
-    }
-
-    if (file == null) return;
-
-    if (openImmediately) {
-      await SaveAndOpenDocument.openFile(file);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("PDF saved to ${file.path}")),
-        );
-      }
-    }
-  }
-
-  pw.Widget _pdfLegendItem(String label, PdfColor color, int type) {
-    return pw.Row(
-      mainAxisSize: pw.MainAxisSize.min,
-      children: [
-        pw.SizedBox(
-          width: 14,
-          height: 14,
-          child: _buildPdfIcon(type, color),
-        ),
-        pw.SizedBox(width: 8),
-        pw.Text(label, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-      ],
-    );
-  }
-
-  pw.Widget _buildDetailedLandscapeTimeline(DailyActivities day, PdfColor primaryColor, PdfPageFormat format) {
-    const double totalHours = 27.0;
-    const double labelWidth = 60.0;
-    
-    // Dynamically calculate width based on the actual page format (A3 Landscape)
-    final double timelineWidth = format.width - format.marginLeft - format.marginRight - labelWidth - 20;
-    final double hourWidth = timelineWidth / totalHours;
-
-    List<pw.Widget> blocks = [];
-    List<pw.Widget> sessionLines = [];
-    List<pw.Widget> markers = [];
-
-    // Compact track heights
-    const double trackHeight = 30.0; 
-    const double trackGap = 10.0;
-    const double slot2Top = 15.0; // Co-driver / Slot 2
-    const double separatorTop = slot2Top + trackHeight + (trackGap / 2);
-    const double slot1Top = slot2Top + trackHeight + trackGap; // Driver / Slot 1
-    const double totalTimelineHeight = slot1Top + trackHeight + 40; 
-
-    // Detailed minute markers (every 5 and 15 minutes)
-    for (int h = 0; h < 27; h++) {
-      for (int m = 5; m < 60; m += 5) {
-        double left = labelWidth + (h * hourWidth) + (m / 60.0) * hourWidth;
-        bool isQuarter = m % 15 == 0;
-        
-        markers.add(pw.Positioned(
-          left: left,
-          top: isQuarter ? 10 : 20,
-          bottom: 35,
-          child: pw.Container(
-            width: isQuarter ? 0.4 : 0.2, 
-            color: isQuarter ? PdfColors.grey200 : PdfColors.grey100
-          ),
-        ));
-        
-        markers.add(pw.Positioned(
-          left: left,
-          bottom: 35,
-          child: pw.Container(
-            width: isQuarter ? 0.8 : 0.4, 
-            height: isQuarter ? 5 : 2.5, 
-            color: PdfColors.grey400
-          ),
-        ));
-      }
-    }
-
-    void drawBlocks(int startIndex, int counter) {
-      if (counter <= 0 || startIndex >= day.activities.length) return;
-
-      int ptr = startIndex;
-      int internalCounter = counter;
-      final firstAct = day.activities[ptr];
-      int activityType = firstAct.activity;
-      int activitySlot = firstAct.slot;
-      double activityTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
-      double prevTime = activityTime;
-
-      // Start session line
-      sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 0.75,
-        top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
-        child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
-      ));
-
-      ptr++;
-      internalCounter -= 2;
-
-      while (internalCounter > 0 && ptr < day.activities.length) {
-        final currentAct = day.activities[ptr];
-        activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
-        double duration = activityTime - prevTime;
-
-        if (duration > 0) {
-          PdfColor color = PdfColors.grey;
-          if (activityType == 0) color = primaryColor;
-          else if (activityType == 2) color = PdfColors.orange;
-          else if (activityType == 3) color = PdfColors.blue;
-
-          // Activity block
-          blocks.add(pw.Positioned(
-            left: labelWidth + (prevTime * hourWidth),
-            top: activitySlot == 1 ? slot2Top : slot1Top,
-            child: pw.Opacity(
-              opacity: 0.8,
-              child: pw.Container(
-                width: max(1.0, duration * hourWidth),
-                height: trackHeight,
-                color: color,
-              ),
-            ),
-          ));
-
-          if (day.activities[ptr - 1].crew == 1) {
-            // Crew indicator
-            blocks.add(pw.Positioned(
-              left: labelWidth + (prevTime * hourWidth),
-              top: (activitySlot == 1 ? slot2Top : slot1Top) + trackHeight - 0.5,
-              child: pw.Container(
-                width: max(0.5, duration * hourWidth),
-                height: 1.5,
-                color: PdfColors.indigo,
-              ),
-            ));
-          }
-        }
-
-        if (currentAct.slot != activitySlot) {
-          sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 0.75,
-            top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
-            child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
-          ));
-          sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 0.75,
-            top: (currentAct.slot == 1 ? slot2Top : slot1Top) - 4,
-            child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
-          ));
-        }
-
-        activityType = currentAct.activity;
-        activitySlot = currentAct.slot;
-        prevTime = activityTime;
-        ptr++;
-        internalCounter -= 2;
-
-        if (currentAct.card == 0 && internalCounter > 2) {
-          drawBlocks(ptr, internalCounter);
-          break;
-        }
-      }
-
-      // End session line
-      sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 0.75,
-        top: (activitySlot == 1 ? slot2Top : slot1Top) - 4,
-        child: pw.Container(width: 1.5, height: trackHeight + 8, color: PdfColors.black),
-      ));
-    }
-
-    drawBlocks(0, day.activities.length * 2);
-
-    return pw.Container(
-      height: totalTimelineHeight,
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-        color: PdfColors.white,
-      ),
-      child: pw.Stack(
-        children: [
-          // Track Labels
-          pw.Positioned(
-            left: 5,
-            top: slot2Top + (trackHeight / 2) - 5,
-            child: pw.Text("SLOT 2", style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-          ),
-          pw.Positioned(
-            left: 5,
-            top: slot1Top + (trackHeight / 2) - 5,
-            child: pw.Text("SLOT 1", style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
-          ),
-          // Separator
-          pw.Positioned(
-            left: labelWidth,
-            right: 0,
-            top: separatorTop,
-            child: pw.Container(height: 1, color: PdfColors.grey300),
-          ),
-          // Grid lines
-          ...markers,
-          // Hour markers & Labels
-          for (int h = 0; h <= 27; h++) ...[
-            pw.Positioned(
-              left: labelWidth + (h * hourWidth),
-              top: 0,
-              bottom: 35,
-              child: pw.Container(width: 0.8, color: PdfColors.grey300),
-            ),
-            pw.Positioned(
-              left: labelWidth + (h * hourWidth) - 20,
-              bottom: 12,
-              child: pw.SizedBox(
-                width: 40,
-                child: pw.Text(
-                  "${(h % 24).toString().padLeft(2, '0')}:00",
-                  style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-            ),
-          ],
-          ...blocks,
-          ...sessionLines,
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _pdfSummaryRow(String label, String value, PdfColor color) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 1),
-      child: pw.Row(
-        mainAxisSize: pw.MainAxisSize.min,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(width: 10),
-          pw.Text(value, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: color)),
-        ],
-      ),
-    );
-  }
-
-  ActivitySummary _calculateDaySummary(DailyActivities day) {
-    final summary = ActivitySummary();
-    if (day.activities.isEmpty) return summary;
-
-    int accumulatedDriving = 0;
-    bool hasFirstBreakPart = false;
-
-    void process(int startIndex, int counter) {
-      if (counter <= 0) return;
-      int ptr = startIndex;
-      int internalCounter = counter;
-      ptr++;
-      internalCounter -= 2;
-
-      while (internalCounter > 0 && ptr < day.activities.length) {
-        final currentAct = day.activities[ptr];
-        int durationMinutes = (currentAct.time - day.activities[ptr - 1].time);
-        int type = day.activities[ptr - 1].activity;
-
-        if (durationMinutes > 0) {
-          switch (type) {
-            case 0: 
-              summary.rest += durationMinutes; 
-              if (!widget.under50km) {
-                if (durationMinutes >= 45) {
-                  accumulatedDriving = 0;
-                  hasFirstBreakPart = false;
-                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
-                  accumulatedDriving = 0;
-                  hasFirstBreakPart = false;
-                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
-                  hasFirstBreakPart = true;
-                }
-              }
-              break;
-            case 1: 
-              summary.availability += durationMinutes; 
-              if (!widget.under50km) {
-                if (durationMinutes >= 45) {
-                  accumulatedDriving = 0;
-                  hasFirstBreakPart = false;
-                } else if (durationMinutes >= 30 && hasFirstBreakPart) {
-                  accumulatedDriving = 0;
-                  hasFirstBreakPart = false;
-                } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
-                  hasFirstBreakPart = true;
-                }
-              }
-              break;
-            case 2: summary.work += durationMinutes; break;
-            case 3: 
-              summary.driving += durationMinutes; 
-              if (!widget.under50km) {
-                accumulatedDriving += durationMinutes;
-                if (accumulatedDriving > 270) {
-                  summary.overdrive += (accumulatedDriving - 270);
-                  accumulatedDriving = 270;
-                }
-              }
-              break;
-          }
-        }
-        ptr++;
-        internalCounter -= 2;
-        if (currentAct.card == 0 && internalCounter > 2) {
-          process(ptr, internalCounter);
-          break;
-        }
-      }
-    }
-
-    process(0, day.activities.length * 2);
-    return summary;
-  }
-
-  pw.Widget _buildPdfTimeline(DailyActivities day, PdfColor primaryColor) {
-    const double totalHours = 27.0;
-    const double labelWidth = 25.0;
-    const double timelineWidth = 480.0;
-    final double hourWidth = timelineWidth / totalHours;
-
-    List<pw.Widget> blocks = [];
-    List<pw.Widget> sessionLines = [];
-
-    void drawBlocks(int startIndex, int counter) {
-      if (counter <= 0 || startIndex >= day.activities.length) return;
-
-      int ptr = startIndex;
-      int internalCounter = counter;
-      final firstAct = day.activities[ptr];
-      int activityType = firstAct.activity;
-      int activitySlot = firstAct.slot;
-      double activityTime = (firstAct.time + widget.utcOffset * 60) / 60.0;
-      double prevTime = activityTime;
-
-      // Start session line
-      sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 1.0,
-        top: activitySlot == 1 ? 2 : 30,
-        child: pw.Container(width: 2.0, height: 28, color: PdfColors.black),
-      ));
-
-      ptr++;
-      internalCounter -= 2;
-
-      while (internalCounter > 0 && ptr < day.activities.length) {
-        final currentAct = day.activities[ptr];
-        activityTime = (currentAct.time + widget.utcOffset * 60) / 60.0;
-        double duration = activityTime - prevTime;
-
-        if (duration > 0) {
-          PdfColor color = PdfColors.grey;
-          if (activityType == 0) color = primaryColor;
-          else if (activityType == 2) color = PdfColors.orange;
-          else if (activityType == 3) color = PdfColors.blue;
-
-          blocks.add(pw.Positioned(
-            left: labelWidth + (prevTime * hourWidth),
-            top: activitySlot == 1 ? 4 : 32,
-            child: pw.Container(
-              width: max(0.5, duration * hourWidth),
-              height: 24,
-              color: color,
-            ),
-          ));
-
-          if (day.activities[ptr - 1].crew == 1) {
-            blocks.add(pw.Positioned(
-              left: labelWidth + (prevTime * hourWidth),
-              top: activitySlot == 1 ? 4 + 22 : 32 + 22,
-              child: pw.Container(
-                width: max(0.5, duration * hourWidth),
-                height: 2,
-                color: PdfColors.indigo,
-              ),
-            ));
-          }
-        }
-
-        if (currentAct.slot != activitySlot) {
-          sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 1.0,
-            top: activitySlot == 1 ? 2 : 30,
-            child: pw.Container(width: 2.0, height: 28, color: PdfColors.black),
-          ));
-          sessionLines.add(pw.Positioned(
-            left: labelWidth + (activityTime * hourWidth) - 1.0,
-            top: currentAct.slot == 1 ? 2 : 30,
-            child: pw.Container(width: 2.0, height: 28, color: PdfColors.black),
-          ));
-        }
-
-        activityType = currentAct.activity;
-        activitySlot = currentAct.slot;
-        prevTime = activityTime;
-        ptr++;
-        internalCounter -= 2;
-
-        if (currentAct.card == 0 && internalCounter > 2) {
-          drawBlocks(ptr, internalCounter);
-          break;
-        }
-      }
-
-      // End session line
-      sessionLines.add(pw.Positioned(
-        left: labelWidth + (activityTime * hourWidth) - 1.0,
-        top: activitySlot == 1 ? 2 : 30,
-        child: pw.Container(width: 2.0, height: 28, color: PdfColors.black),
-      ));
-    }
-
-    drawBlocks(0, day.activities.length * 2);
-
-    return pw.Center(
-      child: pw.Column(
-        children: [
-          pw.Container(
-            height: 85,
-            width: labelWidth + timelineWidth + 10,
-            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400, width: 0.5)),
-            child: pw.Stack(
-              children: [
-                // Track Labels
-                pw.Positioned(
-                  left: 4,
-                  top: 12,
-                  child: pw.Text("S2", style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
-                ),
-                pw.Positioned(
-                  left: 4,
-                  top: 40,
-                  child: pw.Text("S1", style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
-                ),
-                // Separator
-                pw.Positioned(
-                  left: labelWidth,
-                  right: 0,
-                  top: 30,
-                  child: pw.Container(height: 0.5, color: PdfColors.grey300),
-                ),
-                // Hour markers & Labels
-                for (int h = 0; h < 28; h++) ...[
-                  pw.Positioned(
-                    left: labelWidth + (h * hourWidth),
-                    top: 0,
-                    bottom: 25,
-                    child: pw.Container(width: 0.5, color: PdfColors.grey200),
-                  ),
-                  if (h > 0 && h < 27 && (h % 2 == 0))
-                    pw.Positioned(
-                      left: labelWidth + (h * hourWidth) - 10,
-                      bottom: 5,
-                      child: pw.SizedBox(
-                        width: 20,
-                        child: pw.Text(
-                          "${(h % 24).toString().padLeft(2, '0')}:00",
-                          style: pw.TextStyle(fontSize: 6, color: PdfColors.grey800),
-                          textAlign: pw.TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-                ...blocks,
-                ...sessionLines,
-              ],
-            ),
-          ),
-          pw.SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
-
-  List<pw.Widget> _buildPdfActivityLog(DailyActivities day, PdfColor primaryColor) {
-    List<pw.Widget> items = [];
-
-    void process(int startIndex, int counter) {
-      if (counter <= 0) return;
-      int ptr = startIndex;
-      int internalCounter = counter;
-      final firstAct = day.activities[ptr];
-      int activityType = firstAct.activity;
-      int activitySlot = firstAct.slot;
-      int prevTime = firstAct.time;
-      ptr++;
-      internalCounter -= 2;
-
-      while (internalCounter > 0 && ptr < day.activities.length) {
-        final currentAct = day.activities[ptr];
-        int duration = currentAct.time - prevTime;
-        if (duration > 0) {
-          items.add(_pdfActivityItem(activityType, prevTime, currentAct.time, duration, activitySlot, primaryColor));
-        }
-        activityType = currentAct.activity;
-        activitySlot = currentAct.slot;
-        prevTime = currentAct.time;
-        ptr++;
-        internalCounter -= 2;
-        if (currentAct.card == 0 && internalCounter > 2) {
-          process(ptr, internalCounter);
-          break;
-        }
-      }
-    }
-
-    process(0, day.activities.length * 2);
-    return items;
-  }
-
-  pw.Widget _buildPdfIcon(int type, PdfColor color) {
-    return pw.CustomPaint(
-      size: const PdfPoint(12, 12),
-      painter: (PdfGraphics canvas, PdfPoint size) {
-        if (type == -1) { // Session: Vertical line
-          canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.0);
-          canvas.moveTo(size.x / 2, 0);
-          canvas.lineTo(size.x / 2, size.y);
-          canvas.strokePath();
-        } else if (type == -2) { // Crew: Horizontal line
-          canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.5);
-          canvas.moveTo(0, size.y / 2);
-          canvas.lineTo(size.x, size.y / 2);
-          canvas.strokePath();
-        } else if (type == 3) { // Driving: Circle with dot
-          canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.2);
-          canvas.drawEllipse(size.x / 2, size.y / 2, size.x * 0.4, size.y * 0.4);
-          canvas.strokePath();
-          canvas.setFillColor(color);
-          canvas.drawEllipse(size.x / 2, size.y / 2, size.x * 0.1, size.y * 0.1);
-          canvas.fillPath();
-        } else if (type == 2) { // Work: Crossed hammers
-          canvas.setFillColor(color);
-          final double w = size.x;
-          final double h = size.y;
-          final double cx = w / 2;
-          final double cy = h / 2;
-          const double cosA = 0.7071; 
-          const double sinA = -0.7071; 
-          const double s = 0.7;
-
-          void drawHammer(bool mirrored) {
-            void drawPath(List<double> relCoords) {
-              for (int i = 0; i < relCoords.length; i += 2) {
-                final double rx = relCoords[i] * s;
-                final double ry = relCoords[i + 1] * s;
-                double rxRot = rx * cosA - ry * sinA;
-                double ryRot = rx * sinA + ry * cosA;
-                if (mirrored) rxRot = -rxRot;
-                final double tx = cx + rxRot * w;
-                final double ty = cy - ryRot * h;
-                if (i == 0) canvas.moveTo(tx, ty);
-                else canvas.lineTo(tx, ty);
-              }
-              canvas.closePath();
-              canvas.fillPath();
-            }
-            drawPath([-0.06, -0.4, 0.06, -0.4, 0.06, 0.5, -0.06, 0.5]);
-            drawPath([-0.3, -0.5, 0.3, -0.5, 0.3, -0.3, -0.3, -0.3]);
-          }
-          drawHammer(false);
-          drawHammer(true);
-        } else if (type == 1) { // Availability: Box with diagonal
-          canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.5);
-          canvas.drawRect(size.x * 0.1, size.y * 0.1, size.x * 0.8, size.y * 0.8);
-          canvas.strokePath();
-          canvas.moveTo(size.x * 0.1, size.y * 0.1);
-          canvas.lineTo(size.x * 0.9, size.y * 0.9);
-          canvas.strokePath();
-        } else if (type == 0) { // Rest: Bed icon
-          canvas.setStrokeColor(color);
-          canvas.setLineWidth(1.5);
-          canvas.moveTo(size.x * 0.2, size.y * 0.2);
-          canvas.lineTo(size.x * 0.2, size.y * 0.8);
-          canvas.moveTo(size.x * 0.2, size.y * 0.5);
-          canvas.lineTo(size.x * 0.8, size.y * 0.5);
-          canvas.lineTo(size.x * 0.8, size.y * 0.2);
-          canvas.strokePath();
-        }
-      },
-    );
-  }
-
-  pw.Widget _pdfActivityItem(int type, int start, int end, int duration, int slot, PdfColor primaryColor) {
-    String label = "Unknown";
-    PdfColor color = PdfColors.grey;
-    if (type == 0) { label = "Rest"; color = primaryColor; }
-    else if (type == 1) { label = "Availability"; color = PdfColors.grey; }
-    else if (type == 2) { label = "Work"; color = PdfColors.orange; }
-    else if (type == 3) { label = "Driving"; color = PdfColors.blue; }
-
-    final slotStr = slot == 1 ? " (Slot 2)" : " (Slot 1)";
-    final startStr = _formatPdfTime(start);
-    final endStr = _formatPdfTime(end);
-    final durStr = _formatPdfDuration(duration);
-
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100))),
-      child: pw.Row(
-        children: [
-          pw.SizedBox(width: 12, height: 12, child: _buildPdfIcon(type, color)),
-          pw.SizedBox(width: 10),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(label + slotStr, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-              pw.Text("$startStr - $endStr", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-            ],
-          ),
-          pw.Spacer(),
-          pw.Text(durStr, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: color)),
-        ],
-      ),
-    );
-  }
-
-  PdfColor _getPdfEventColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'operational events': return PdfColors.blue;
-      case 'driver observations': return PdfColors.teal;
-      case 'compliance events': return PdfColors.red;
-      case 'personal events': return PdfColors.green;
-      case 'security events': return PdfColors.orange;
-      default: return PdfColors.grey;
-    }
-  }
-
-  String _formatPdfTime(int minutes) {
-    int h = ((minutes + widget.utcOffset * 60) ~/ 60) % 24;
-    if (h < 0) h += 24;
-    int m = (minutes + widget.utcOffset * 60) % 60;
-    if (m < 0) m += 60;
-    return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
-  }
-
-  String _formatPdfDuration(int minutes) {
-    return "[${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}]";
-  }
 
 
   List<Widget> _buildActivityLog(DailyActivities day, Color primaryGreen) {

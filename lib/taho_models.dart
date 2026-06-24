@@ -198,6 +198,22 @@ class DailyActivities {
   DateTime get date => header.time;
 }
 
+class ActivitySummary {
+  int rest = 0;
+  int availability = 0;
+  int work = 0;
+  int driving = 0;
+  int overdrive = 0;
+
+  void reset() {
+    rest = 0;
+    availability = 0;
+    work = 0;
+    driving = 0;
+    overdrive = 0;
+  }
+}
+
 class TahoGen1Card {
   final Uint8List iccData;
   final Uint8List icData;

@@ -928,6 +928,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
               places: places,
               placesG2: placesG2,
               driverEvents: box.values.toList(),
+              vehicles: vehicles,
+              vehiclesG2: vehiclesG2,
+              isGen2View: _isGen2View,
               initialViewMode: _activitiesSubTabIndex,
               onViewModeChanged: (index) => setState(() => _activitiesSubTabIndex = index),
             );
