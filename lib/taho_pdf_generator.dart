@@ -340,8 +340,8 @@ class TachoPdfGenerator {
             pageFormat: PdfPageFormat.a4,
             margin: const pw.EdgeInsets.all(40),
             build: (context) {
-              const double detailedTimelineHeight = 650;
-              const double timelineLabelPadding = 5;
+              const double detailedTimelineHeight = 640;
+              const double timelineLabelPadding = 15;
               return pw.Align(
                 alignment: pw.Alignment.topLeft,
                 child: pw.Column(
@@ -429,6 +429,33 @@ class TachoPdfGenerator {
 
                                 // TODO: Implement activity block rendering here
                               },
+                            ),
+                          ),
+
+                          // Slot labels near the timeline above it
+                          pw.Positioned(
+                            left: 100,
+                            top: timelineLabelPadding - 15,
+                            child: pw.Row(
+                              children: [
+                                pw.Text(
+                                  'SLOT 1',
+                                  style: pw.TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.grey900,
+                                  ),
+                                ),
+                                pw.SizedBox(width: 24),
+                                pw.Text(
+                                  'SLOT 2',
+                                  style: pw.TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.grey900,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
 
