@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart' show Color;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -331,7 +332,7 @@ class TachoPdfGenerator {
     if (includeDetailedTimeline) {
       final title = "DETAILED ACTIVITY TIMELINE - $dateStr";
       const int timelineMinutes = 27 * 60;
-      const double minuteHeight = 2.0;
+      const double minuteHeight = 8.0;
       const double timelineLabelPadding = 20;
       final double timelineHeight = timelineMinutes * minuteHeight;
       final pageFormat = PdfPageFormat(
@@ -393,6 +394,36 @@ class TachoPdfGenerator {
                             final double axisTop = topPadding;
                             final double axisBottom =
                                 topPadding + timelineHeight;
+                            const double slotLabelLeft = 110.0;
+                            const double slotLabelSpacing = 24.0;
+                            const double slotBlockWidth = 44.0;
+                            final double slot1X = slotLabelLeft;
+                            final double slot2X =
+                                slotLabelLeft +
+                                slotBlockWidth +
+                                slotLabelSpacing;
+
+                            void drawBlock(
+                              double x,
+                              double y,
+                              double w,
+                              double h,
+                              PdfColor fill,
+                            ) {
+                              canvas.setFillColor(fill);
+                              const double radius = 4.0;
+                              try {
+                                canvas.drawRRect(x, y, w, h, radius, radius);
+                                canvas.fillPath();
+                                canvas.setLineWidth(0.5);
+                                canvas.setStrokeColor(PdfColors.black);
+                                canvas.drawRRect(x, y, w, h, radius, radius);
+                                canvas.strokePath();
+                              } catch (_) {
+                                canvas.drawRect(x, y, w, h);
+                                canvas.fillPath();
+                              }
+                            }
 
                             canvas.setLineWidth(0.5);
                             canvas.setStrokeColor(PdfColors.grey700);
@@ -400,13 +431,153 @@ class TachoPdfGenerator {
                             canvas.lineTo(trackLeft, axisBottom);
                             canvas.strokePath();
 
+                            final activities = day.activities;
+                            int accumulatedDriving = 0;
+                            bool hasFirstBreakPart = false;
+
+                            if (activities.length == 1) {
+                              final prev = activities.first;
+                              if (prev.card != 0) {
+                                int rawStart = prev.time;
+                                int rawEnd = rawStart + 1440;
+                                final int localStart =
+                                    rawStart + utcOffset * 60;
+                                final int localEnd = rawEnd + utcOffset * 60;
+                                final int clipStart = localStart.clamp(
+                                  0,
+                                  timelineMinutes,
+                                );
+                                final int clipEnd = localEnd.clamp(
+                                  0,
+                                  timelineMinutes,
+                                );
+                                if (clipEnd > clipStart) {
+                                  final double y =
+                                      axisBottom - clipEnd * minuteHeight;
+                                  final double hRect = max(
+                                    2.0,
+                                    (clipEnd - clipStart) * minuteHeight,
+                                  );
+                                  final double x = prev.slot == 1
+                                      ? slot2X
+                                      : slot1X;
+                                  final double w = slotBlockWidth;
+                                  final PdfColor fillColor =
+                                      _getActivityPdfColor(
+                                        prev.activity,
+                                        pdfPrimaryGreen,
+                                      );
+                                  drawBlock(x, y, w, hRect, fillColor);
+                                }
+                              }
+                            }
+
+                            for (int i = 1; i < activities.length; i++) {
+                              final prev = activities[i - 1];
+                              final curr = activities[i];
+                              int rawStart = prev.time;
+                              int rawEnd = curr.time;
+                              if (rawEnd < rawStart) rawEnd += 1440;
+
+                              if (prev.card == 0) {
+                                accumulatedDriving = 0;
+                                hasFirstBreakPart = false;
+                                continue;
+                              }
+
+                              final int durationMinutes = rawEnd - rawStart;
+                              if (durationMinutes <= 0) continue;
+
+                              final int localStart = rawStart + utcOffset * 60;
+                              final int localEnd = rawEnd + utcOffset * 60;
+                              final int clipStart = localStart.clamp(
+                                0,
+                                timelineMinutes,
+                              );
+                              final int clipEnd = localEnd.clamp(
+                                0,
+                                timelineMinutes,
+                              );
+                              if (clipEnd <= clipStart) continue;
+
+                              final double y =
+                                  axisBottom - clipEnd * minuteHeight;
+                              final double hRect = max(
+                                2.0,
+                                (clipEnd - clipStart) * minuteHeight,
+                              );
+                              final double x = prev.slot == 1 ? slot2X : slot1X;
+                              final double w = slotBlockWidth;
+
+                              PdfColor fillColor = _getActivityPdfColor(
+                                prev.activity,
+                                pdfPrimaryGreen,
+                              );
+                              if (!under50km) {
+                                if (prev.activity == 0 || prev.activity == 1) {
+                                  if (durationMinutes >= 45) {
+                                    accumulatedDriving = 0;
+                                    hasFirstBreakPart = false;
+                                  } else if (durationMinutes >= 30 &&
+                                      hasFirstBreakPart) {
+                                    accumulatedDriving = 0;
+                                    hasFirstBreakPart = false;
+                                  } else if (durationMinutes >= 15 &&
+                                      !hasFirstBreakPart) {
+                                    hasFirstBreakPart = true;
+                                  }
+                                } else if (prev.activity == 3) {
+                                  accumulatedDriving += durationMinutes;
+                                  if (accumulatedDriving > 270) {
+                                    final int overMinutes =
+                                        accumulatedDriving - 270;
+                                    final int regularMinutes =
+                                        durationMinutes - overMinutes;
+                                    final double regularHeight =
+                                        regularMinutes * minuteHeight;
+                                    final double drawnBlueHeight =
+                                        regularMinutes > 0
+                                        ? max(2.0, regularHeight)
+                                        : 0.0;
+                                    if (regularMinutes > 0) {
+                                      drawBlock(
+                                        x,
+                                        y,
+                                        w,
+                                        drawnBlueHeight,
+                                        PdfColors.blue,
+                                      );
+                                    }
+                                    final double overHeight = max(
+                                      2.0,
+                                      overMinutes * minuteHeight,
+                                    );
+                                    final double overY = y + drawnBlueHeight;
+                                    drawBlock(
+                                      x,
+                                      overY,
+                                      w,
+                                      overHeight,
+                                      PdfColors.red,
+                                    );
+                                    accumulatedDriving = 270;
+                                    continue;
+                                  }
+                                }
+                              }
+
+                              if (durationMinutes > 0) {
+                                drawBlock(x, y, w, hRect, fillColor);
+                              }
+                            }
+
                             for (
                               int totalM = 0;
                               totalM <= timelineMinutes;
                               totalM++
                             ) {
                               final double y =
-                                  topPadding + totalM * minuteHeight;
+                                  axisBottom - totalM * minuteHeight;
 
                               if (totalM % 60 == 0) {
                                 canvas.setLineWidth(0.8);
@@ -426,14 +597,14 @@ class TachoPdfGenerator {
                               } else {
                                 continue;
                               }
-
                               canvas.strokePath();
                             }
+                            canvas.restoreContext();
                           },
                         ),
                       ),
                       pw.Positioned(
-                        left: 110,
+                        left: 115,
                         top: timelineLabelPadding - 14,
                         child: pw.Row(
                           children: [
@@ -445,7 +616,7 @@ class TachoPdfGenerator {
                                 color: PdfColors.grey900,
                               ),
                             ),
-                            pw.SizedBox(width: 24),
+                            pw.SizedBox(width: 32),
                             pw.Text(
                               'SLOT 2',
                               style: pw.TextStyle(
