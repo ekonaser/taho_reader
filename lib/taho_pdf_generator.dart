@@ -330,182 +330,165 @@ class TachoPdfGenerator {
 
     if (includeDetailedTimeline) {
       final title = "DETAILED ACTIVITY TIMELINE - $dateStr";
-      const int detailedTimelinePageCount = 9;
-      for (int pageIdx = 0; pageIdx < detailedTimelinePageCount; pageIdx++) {
-        final startHour = pageIdx * 3;
-        final displayedStartHour = startHour % 24;
-        final displayedEndHour = (startHour + 3) % 24;
-        doc.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            margin: const pw.EdgeInsets.all(40),
-            build: (context) {
-              const double detailedTimelineHeight = 640;
-              const double timelineLabelPadding = 15;
-              return pw.Align(
-                alignment: pw.Alignment.topLeft,
-                child: pw.Column(
+      const int timelineMinutes = 27 * 60;
+      const double minuteHeight = 2.0;
+      const double timelineLabelPadding = 20;
+      final double timelineHeight = timelineMinutes * minuteHeight;
+      final pageFormat = PdfPageFormat(
+        PdfPageFormat.a4.width,
+        timelineHeight + 180,
+      );
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: pageFormat,
+          margin: const pw.EdgeInsets.all(40),
+          build: (context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Column(
-                          crossAxisAlignment: pw.CrossAxisAlignment.start,
-                          children: [
-                            pw.Text(
-                              title,
-                              style: pw.TextStyle(
-                                fontSize: 11,
-                                fontWeight: pw.FontWeight.bold,
-                                color: pdfPrimaryGreen,
-                              ),
-                            ),
-                            pw.Text(
-                              "Driver: ${cardId?.name ?? 'Unknown'} ${cardId?.surname ?? ''} | Date: $dateStr | UTC ${utcOffset >= 0 ? '+' : ''}$utcOffset",
-                              style: const pw.TextStyle(
-                                fontSize: 8,
-                                color: PdfColors.grey700,
-                              ),
-                            ),
-                          ],
+                        pw.Text(
+                          title,
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                            color: pdfPrimaryGreen,
+                          ),
                         ),
                         pw.Text(
-                          "Page ${pageIdx + 1} of $detailedTimelinePageCount (${displayedStartHour.toString().padLeft(2, '0')}:00 - ${displayedEndHour.toString().padLeft(2, '0')}:00)",
+                          "Driver: ${cardId?.name ?? 'Unknown'} ${cardId?.surname ?? ''} | Date: $dateStr | UTC ${utcOffset >= 0 ? '+' : ''}$utcOffset",
                           style: const pw.TextStyle(
-                            fontSize: 10,
-                            color: PdfColors.grey,
+                            fontSize: 9,
+                            color: PdfColors.grey700,
                           ),
                         ),
                       ],
                     ),
-                    pw.SizedBox(height: 50),
-                    pw.SizedBox(
-                      height: detailedTimelineHeight + timelineLabelPadding * 2,
-                      child: pw.Stack(
-                        children: [
-                          // Track and Ticks
-                          pw.Positioned.fill(
-                            child: pw.CustomPaint(
-                              painter: (canvas, size) {
-                                final double contentHeight =
-                                    size.y - timelineLabelPadding * 2;
-                                final double hourHeight = contentHeight / 3;
-                                final double minuteHeight = hourHeight / 60;
-                                const double trackLeft = 80;
-                                const double topPadding = timelineLabelPadding;
-
-                                // Vertical Axis Line (strictly 3 hours) - Positioned at the end of labels
-                                canvas.setLineWidth(0.5);
-                                canvas.setStrokeColor(PdfColors.grey700);
-                                canvas.moveTo(trackLeft - 35, topPadding);
-                                canvas.lineTo(
-                                  trackLeft - 35,
-                                  size.y - topPadding,
-                                );
-                                canvas.strokePath();
-
-                                // Minute Ticks (Top-down alignment)
-                                for (int totalM = 0; totalM <= 180; totalM++) {
-                                  double y = topPadding + totalM * minuteHeight;
-
-                                  if (totalM % 10 == 0) {
-                                    canvas.setLineWidth(0.8);
-                                    canvas.setStrokeColor(PdfColors.grey700);
-                                    canvas.moveTo(trackLeft - 35, y);
-                                    canvas.lineTo(trackLeft - 5, y);
-                                  } else if (totalM % 5 == 0) {
-                                    canvas.setLineWidth(0.4);
-                                    canvas.setStrokeColor(PdfColors.grey500);
-                                    canvas.moveTo(trackLeft - 35, y);
-                                    canvas.lineTo(trackLeft - 20, y);
-                                  } else {
-                                    canvas.setLineWidth(0.2);
-                                    canvas.setStrokeColor(PdfColors.grey400);
-                                    canvas.moveTo(trackLeft - 35, y);
-                                    canvas.lineTo(trackLeft - 23, y);
-                                  }
-                                  canvas.strokePath();
-                                }
-
-                                // TODO: Implement activity block rendering here
-                              },
-                            ),
-                          ),
-
-                          // Slot labels near the timeline above it
-                          pw.Positioned(
-                            left: 100,
-                            top: timelineLabelPadding - 15,
-                            child: pw.Row(
-                              children: [
-                                pw.Text(
-                                  'SLOT 1',
-                                  style: pw.TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: pw.FontWeight.bold,
-                                    color: PdfColors.grey900,
-                                  ),
-                                ),
-                                pw.SizedBox(width: 24),
-                                pw.Text(
-                                  'SLOT 2',
-                                  style: pw.TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: pw.FontWeight.bold,
-                                    color: PdfColors.grey900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Time Labels
-                          ...List.generate(19, (index) {
-                            final totalMinutesInPage = index * 10;
-                            final totalMinutesInDay =
-                                (startHour * 60) + totalMinutesInPage;
-                            final totalWithOffset =
-                                totalMinutesInDay + utcOffset * 60;
-
-                            int h = (totalWithOffset ~/ 60) % 24;
-                            if (h < 0) h += 24;
-                            int m = totalWithOffset % 60;
-                            if (m < 0) m += 60;
-
-                            final double minuteHeight =
-                                detailedTimelineHeight / 3 / 60;
-                            final double topOffset =
-                                totalMinutesInPage * minuteHeight +
-                                timelineLabelPadding;
-
-                            return pw.Positioned(
-                              left: -5,
-                              top: topOffset - 5,
-                              child: pw.Container(
-                                width: 45,
-                                height: 10,
-                                alignment: pw.Alignment.centerRight,
-                                child: pw.Text(
-                                  "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}",
-                                  style: pw.TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: pw.FontWeight.bold,
-                                    color: PdfColors.grey900,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
+                    pw.Text(
+                      "27h timeline",
+                      style: const pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey,
                       ),
                     ),
                   ],
                 ),
-              );
-            },
-          ),
-        );
-      }
+                pw.SizedBox(height: 30),
+                pw.Container(
+                  width: double.infinity,
+                  height: timelineHeight + timelineLabelPadding * 2,
+                  child: pw.Stack(
+                    children: [
+                      pw.Positioned.fill(
+                        child: pw.CustomPaint(
+                          painter: (canvas, size) {
+                            const double trackLeft = 100;
+                            final double topPadding = timelineLabelPadding;
+                            final double axisTop = topPadding;
+                            final double axisBottom =
+                                topPadding + timelineHeight;
+
+                            canvas.setLineWidth(0.5);
+                            canvas.setStrokeColor(PdfColors.grey700);
+                            canvas.moveTo(trackLeft, axisTop);
+                            canvas.lineTo(trackLeft, axisBottom);
+                            canvas.strokePath();
+
+                            for (
+                              int totalM = 0;
+                              totalM <= timelineMinutes;
+                              totalM++
+                            ) {
+                              final double y =
+                                  topPadding + totalM * minuteHeight;
+
+                              if (totalM % 60 == 0) {
+                                canvas.setLineWidth(0.8);
+                                canvas.setStrokeColor(PdfColors.grey700);
+                                canvas.moveTo(trackLeft - 12, y);
+                                canvas.lineTo(trackLeft, y);
+                              } else if (totalM % 10 == 0) {
+                                canvas.setLineWidth(0.5);
+                                canvas.setStrokeColor(PdfColors.grey500);
+                                canvas.moveTo(trackLeft - 8, y);
+                                canvas.lineTo(trackLeft, y);
+                              } else if (totalM % 5 == 0) {
+                                canvas.setLineWidth(0.2);
+                                canvas.setStrokeColor(PdfColors.grey400);
+                                canvas.moveTo(trackLeft - 5, y);
+                                canvas.lineTo(trackLeft, y);
+                              } else {
+                                continue;
+                              }
+
+                              canvas.strokePath();
+                            }
+                          },
+                        ),
+                      ),
+                      pw.Positioned(
+                        left: 110,
+                        top: timelineLabelPadding - 14,
+                        child: pw.Row(
+                          children: [
+                            pw.Text(
+                              'SLOT 1',
+                              style: pw.TextStyle(
+                                fontSize: 10,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.grey900,
+                              ),
+                            ),
+                            pw.SizedBox(width: 24),
+                            pw.Text(
+                              'SLOT 2',
+                              style: pw.TextStyle(
+                                fontSize: 10,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.grey900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...List.generate(28, (index) {
+                        final int totalMinutes = index * 60;
+                        final int labelHour = index % 24;
+                        final double topOffset =
+                            timelineLabelPadding +
+                            totalMinutes * minuteHeight -
+                            6;
+                        return pw.Positioned(
+                          left: 0,
+                          top: topOffset,
+                          child: pw.Container(
+                            width: 80,
+                            alignment: pw.Alignment.centerRight,
+                            child: pw.Text(
+                              "${labelHour.toString().padLeft(2, '0')}:00",
+                              style: pw.TextStyle(
+                                fontSize: 9,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.grey900,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
     }
 
     await _finalizePdf(doc, "ActivityLog_$dateStr", share, openImmediately);

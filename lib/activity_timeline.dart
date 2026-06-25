@@ -771,7 +771,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               SwitchListTile(
                 secondary: Icon(Icons.timeline, color: primaryGreen),
                 title: const Text('Include Detailed Timeline'),
-                subtitle: const Text('Adds 8 high-resolution pages (3h/page)'),
+                subtitle: const Text('Adds 1 high-resolution page with detailed activities'),
                 value: _includeDetailedTimeline,
                 activeColor: primaryGreen,
                 onChanged: (bool value) {
