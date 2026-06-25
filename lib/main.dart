@@ -1097,10 +1097,19 @@ class _TahoDashboardState extends State<TahoDashboard> {
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: primaryGreen.withOpacity(0.1),
-                  child: Icon(record.isGen2 ? Icons.looks_two : Icons.looks_one, color: primaryGreen),
+                  child: const Icon(Icons.sim_card, color: primaryGreen),
                 ),
                 title: Text(record.driverName),
-                subtitle: Text("Added to archive: ${record.downloadDate.toLocal().toString().split('.')[0]}"),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Card: ${record.cardNumber}"),
+                    Text(
+                      record.downloadDate.toLocal().toString().split('.')[0],
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

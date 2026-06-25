@@ -54,7 +54,7 @@ class TachoPdfGenerator {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         header: (context) =>
-            _buildHeader(title, "Period: $rangeStr", utcStr, pdfPrimaryGreen),
+            _buildHeader(title, "Period: $rangeStr", "", pdfPrimaryGreen),
         build: (context) => [
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
