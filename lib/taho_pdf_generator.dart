@@ -54,7 +54,7 @@ class TachoPdfGenerator {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         header: (context) =>
-            _buildHeader(title, "Period: $rangeStr", "", pdfPrimaryGreen),
+            _buildHeader(title, "Period: $rangeStr", utcStr, pdfPrimaryGreen),
         build: (context) => [
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -183,6 +183,8 @@ class TachoPdfGenerator {
     required List<DailyVehicles> vehicles,
     required List<DailyVehiclesG2> vehiclesG2,
     required List<DriverEvent> allEvents,
+    required List<PlaceRecord> places,
+    required List<PlaceRecordG2> placesG2,
     required bool isGen2View,
     required int utcOffset,
     bool under50km = false,
@@ -468,6 +470,14 @@ class TachoPdfGenerator {
                                         pdfPrimaryGreen,
                                       );
                                   drawBlock(x, y, w, hRect, fillColor);
+
+                                  if (prev.crew == 1) {
+                                    canvas.setStrokeColor(PdfColors.indigo);
+                                    canvas.setLineWidth(3.5);
+                                    canvas.moveTo(x, y);
+                                    canvas.lineTo(x, y + hRect);
+                                    canvas.strokePath();
+                                  }
                                 }
                               }
                             }
@@ -513,6 +523,8 @@ class TachoPdfGenerator {
                                 prev.activity,
                                 pdfPrimaryGreen,
                               );
+
+                              bool drewOverdrive = false;
                               if (!under50km) {
                                 if (prev.activity == 0 || prev.activity == 1) {
                                   if (durationMinutes >= 45) {
@@ -589,13 +601,99 @@ class TachoPdfGenerator {
                                     }
 
                                     accumulatedDriving = 270;
-                                    continue;
+                                    drewOverdrive = true;
                                   }
                                 }
                               }
 
-                              if (durationMinutes > 0) {
+                              if (!drewOverdrive && durationMinutes > 0) {
                                 drawBlock(x, y, w, hRect, fillColor);
+                              }
+
+                              if (prev.crew == 1) {
+                                canvas.setStrokeColor(PdfColors.indigo);
+                                canvas.setLineWidth(3.5);
+                                canvas.moveTo(x, y);
+                                canvas.lineTo(x, y + hRect);
+                                canvas.strokePath();
+                              }
+                            }
+
+                            // --- DRAW COUNTRIES (PLACES) ---
+                            final List<dynamic> allPlacesForDay = [];
+                            allPlacesForDay.addAll(places);
+                            allPlacesForDay.addAll(placesG2);
+
+                            for (var place in allPlacesForDay) {
+                              final pDate = place.entryTime.toLocal();
+                              if (pDate.year == day.date.year &&
+                                  pDate.month == day.date.month &&
+                                  pDate.day == day.date.day) {
+                                final int placeMinutes =
+                                    place.entryTime.hour * 60 +
+                                        place.entryTime.minute +
+                                        utcOffset * 60;
+
+                                if (placeMinutes >= 0 &&
+                                    placeMinutes <= timelineMinutes) {
+                                  final double py =
+                                      axisBottom - placeMinutes * minuteHeight;
+                                  final double px =
+                                      slot2X + slotBlockWidth + 12;
+
+                                  final String country = _getCountryCode(
+                                    place.dailyWorkPeriodCountry,
+                                  );
+                                  final bool isStart =
+                                      place.entryTypeDailyWorkPeriod == 0;
+
+                                  canvas.setFillColor(
+                                    isStart ? PdfColors.green : PdfColors.orange,
+                                  );
+                                  canvas.setStrokeColor(
+                                    isStart ? PdfColors.green : PdfColors.orange,
+                                  );
+
+                                  // Draw symbol similar to TahoInsertion/WithdrawalPainter
+                                  const double symW = 8.0;
+                                  const double symH = 12.0;
+                                  final double sy = py - symH / 2;
+
+                                  if (isStart) {
+                                    // Insertion: ||>
+                                    canvas.drawRect(px, sy, symW * 0.35, symH);
+                                    canvas.fillPath();
+                                    canvas.moveTo(px + symW * 0.55, sy);
+                                    canvas.lineTo(px + symW, sy + symH / 2);
+                                    canvas.lineTo(px + symW * 0.55, sy + symH);
+                                    canvas.closePath();
+                                    canvas.fillPath();
+                                  } else {
+                                    // Withdrawal: <||
+                                    canvas.moveTo(px + symW * 0.45, sy);
+                                    canvas.lineTo(px, sy + symH / 2);
+                                    canvas.lineTo(px + symW * 0.45, sy + symH);
+                                    canvas.closePath();
+                                    canvas.fillPath();
+                                    canvas.drawRect(
+                                      px + symW * 0.65,
+                                      sy,
+                                      symW * 0.35,
+                                      symH,
+                                    );
+                                    canvas.fillPath();
+                                  }
+
+                                  final PdfFont font =
+                                      PdfFont.helvetica(doc.document);
+                                  canvas.drawString(
+                                    font,
+                                    9,
+                                    country,
+                                    px + symW + 4,
+                                    py - 3.5,
+                                  );
+                                }
                               }
                             }
 
@@ -1064,6 +1162,68 @@ class TachoPdfGenerator {
     if (type.toLowerCase().contains('compliance')) return PdfColors.red;
     if (type.toLowerCase().contains('security')) return PdfColors.orange;
     return PdfColors.blue;
+  }
+
+  static String _getCountryCode(int code) {
+    switch (code) {
+      case 1: return "A";
+      case 2: return "AL";
+      case 3: return "AND";
+      case 4: return "ARM";
+      case 5: return "AZ";
+      case 6: return "B";
+      case 7: return "BG";
+      case 8: return "BIH";
+      case 9: return "BY";
+      case 10: return "CH";
+      case 11: return "CY";
+      case 12: return "CZ";
+      case 13: return "D";
+      case 14: return "DK";
+      case 15: return "E";
+      case 16: return "EST";
+      case 17: return "F";
+      case 18: return "FIN";
+      case 19: return "FL";
+      case 20: return "FR";
+      case 21: return "UK";
+      case 22: return "GE";
+      case 23: return "GR";
+      case 24: return "H";
+      case 25: return "HR";
+      case 26: return "I";
+      case 27: return "IRL";
+      case 28: return "IS";
+      case 29: return "KZ";
+      case 30: return "L";
+      case 31: return "LT";
+      case 32: return "LV";
+      case 33: return "M";
+      case 34: return "MC";
+      case 35: return "MD";
+      case 36: return "MK";
+      case 37: return "N";
+      case 38: return "NL";
+      case 39: return "P";
+      case 40: return "PL";
+      case 41: return "RO";
+      case 42: return "RSM";
+      case 43: return "RUS";
+      case 44: return "S";
+      case 45: return "SK";
+      case 46: return "SLO";
+      case 47: return "TM";
+      case 48: return "TR";
+      case 49: return "UA";
+      case 50: return "V";
+      case 51: return "YU";
+      case 52: return "MNE";
+      case 53: return "SRB";
+      case 54: return "UZ";
+      case 253: return "EC";
+      case 254: return "EUR";
+      default: return "??";
+    }
   }
 
   static String formatPdfTime(int minutes, int utcOffset) {
