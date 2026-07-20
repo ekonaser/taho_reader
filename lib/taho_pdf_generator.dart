@@ -533,33 +533,61 @@ class TachoPdfGenerator {
                                         accumulatedDriving - 270;
                                     final int regularMinutes =
                                         durationMinutes - overMinutes;
-                                    final double regularHeight =
-                                        regularMinutes * minuteHeight;
-                                    final double drawnBlueHeight =
-                                        regularMinutes > 0
-                                        ? max(2.0, regularHeight)
-                                        : 0.0;
-                                    if (regularMinutes > 0) {
+                                    final int regularEndMinutes =
+                                        localStart + regularMinutes;
+                                    final int overStartMinutes =
+                                        regularEndMinutes;
+                                    final int overEndMinutes = localEnd;
+
+                                    final int blueClipStart = localStart.clamp(
+                                      0,
+                                      timelineMinutes,
+                                    );
+                                    final int blueClipEnd = regularEndMinutes
+                                        .clamp(0, timelineMinutes);
+                                    final int redClipStart = overStartMinutes
+                                        .clamp(0, timelineMinutes);
+                                    final int redClipEnd = overEndMinutes.clamp(
+                                      0,
+                                      timelineMinutes,
+                                    );
+
+                                    if (blueClipEnd > blueClipStart) {
+                                      final double blueY =
+                                          axisBottom -
+                                          blueClipEnd * minuteHeight;
+                                      final double blueHeight = max(
+                                        2.0,
+                                        (blueClipEnd - blueClipStart) *
+                                            minuteHeight,
+                                      );
                                       drawBlock(
                                         x,
-                                        y,
+                                        blueY,
                                         w,
-                                        drawnBlueHeight,
+                                        blueHeight,
                                         PdfColors.blue,
                                       );
                                     }
-                                    final double overHeight = max(
-                                      2.0,
-                                      overMinutes * minuteHeight,
-                                    );
-                                    final double overY = y + drawnBlueHeight;
-                                    drawBlock(
-                                      x,
-                                      overY,
-                                      w,
-                                      overHeight,
-                                      PdfColors.red,
-                                    );
+
+                                    if (redClipEnd > redClipStart) {
+                                      final double redY =
+                                          axisBottom -
+                                          redClipEnd * minuteHeight;
+                                      final double redHeight = max(
+                                        2.0,
+                                        (redClipEnd - redClipStart) *
+                                            minuteHeight,
+                                      );
+                                      drawBlock(
+                                        x,
+                                        redY,
+                                        w,
+                                        redHeight,
+                                        PdfColors.red,
+                                      );
+                                    }
+
                                     accumulatedDriving = 270;
                                     continue;
                                   }
