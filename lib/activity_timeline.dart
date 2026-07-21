@@ -526,6 +526,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               Expanded(child: _summaryCard(TahoRestPainter(color: primaryGreen), "REST", summary.rest, primaryGreen)),
             ],
           ),
+          const SizedBox(height: 12),
+          _summaryCard(
+            const Icon(Icons.speed, color: Colors.teal, size: 20),
+            "TOTAL DISTANCE",
+            0,
+            Colors.teal,
+            valueOverride: "${summary.totalKm} km",
+          ),
         ],
       ),
     );
@@ -535,6 +543,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final summary = ActivitySummary();
     for (var day in filteredDays) {
       if (day.activities.isEmpty) continue;
+      summary.totalKm += day.header.km;
       
       int accumulatedDriving = 0;
       bool hasFirstBreakPart = false;
@@ -727,7 +736,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  Widget _summaryCard(CustomPainter painter, String label, int minutes, Color color) {
+  Widget _summaryCard(dynamic iconOrPainter, String label, int minutes, Color color, {String? valueOverride}) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final h = minutes ~/ 60;
@@ -745,14 +754,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         children: [
           Row(
             children: [
-              SizedBox(width: 20, height: 20, child: CustomPaint(painter: painter)),
+              if (iconOrPainter is CustomPainter)
+                SizedBox(width: 20, height: 20, child: CustomPaint(painter: iconOrPainter))
+              else
+                iconOrPainter as Widget,
               const SizedBox(width: 8),
               Text(label, style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            "${h}h ${m.toString().padLeft(2, '0')}m",
+            valueOverride ?? "${h}h ${m.toString().padLeft(2, '0')}m",
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
           ),
         ],

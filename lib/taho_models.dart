@@ -204,6 +204,7 @@ class ActivitySummary {
   int work = 0;
   int driving = 0;
   int overdrive = 0;
+  int totalKm = 0;
 
   void reset() {
     rest = 0;
@@ -211,6 +212,7 @@ class ActivitySummary {
     work = 0;
     driving = 0;
     overdrive = 0;
+    totalKm = 0;
   }
 }
 

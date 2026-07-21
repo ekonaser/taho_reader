@@ -22,7 +22,6 @@ class TachoPdfGenerator {
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
-    final utcStr = "UTC ${utcOffset >= 0 ? '+' : ''}$utcOffset";
 
     final summary = ActivitySummary();
     for (var day in days) {
@@ -31,6 +30,7 @@ class TachoPdfGenerator {
       summary.availability += s.availability;
       summary.work += s.work;
       summary.driving += s.driving;
+      summary.totalKm += s.totalKm;
     }
 
     String formatDur(int mins) {
@@ -54,7 +54,7 @@ class TachoPdfGenerator {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         header: (context) =>
-            _buildHeader(title, "Period: $rangeStr", utcStr, pdfPrimaryGreen),
+            _buildHeader(title, "Period: $rangeStr", "", pdfPrimaryGreen),
         build: (context) => [
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -91,6 +91,7 @@ class TachoPdfGenerator {
                 ),
               ),
               pw.Container(
+                width: 130,
                 padding: const pw.EdgeInsets.all(8),
                 decoration: pw.BoxDecoration(
                   border: pw.Border.all(color: PdfColors.grey300),
@@ -129,6 +130,11 @@ class TachoPdfGenerator {
                       "Rest:",
                       formatDur(summary.rest),
                       pdfPrimaryGreen,
+                    ),
+                    _pdfSummaryRow(
+                      "Distance:",
+                      "${summary.totalKm} km",
+                      PdfColors.teal,
                     ),
                   ],
                 ),
@@ -886,10 +892,9 @@ class TachoPdfGenerator {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 1),
       child: pw.Row(
-        mainAxisSize: pw.MainAxisSize.min,
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(width: 10),
           pw.Text(
             value,
             style: pw.TextStyle(
@@ -1240,6 +1245,7 @@ class TachoPdfGenerator {
     bool under50km,
   ) {
     final s = ActivitySummary();
+    s.totalKm = day.header.km;
     for (int i = 1; i < day.activities.length; i++) {
       int dur = day.activities[i].time - day.activities[i - 1].time;
       if (dur <= 0) continue;
