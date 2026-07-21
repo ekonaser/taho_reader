@@ -1245,7 +1245,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         ptr++;
         internalCounter -= 2;
 
-        if (currentAct.card == 0 && internalCounter > 2) {
+        if (currentAct.card == 0 &&  currentAct.crew == 0 && internalCounter > 2) {
           drawOneDay(ptr, internalCounter);
           break;
         }

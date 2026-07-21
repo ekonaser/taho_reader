@@ -492,7 +492,7 @@ class TachoPdfGenerator {
                               if (prev.card == 0) {
                                 accumulatedDriving = 0;
                                 hasFirstBreakPart = false;
-                                continue;
+                                if (prev.crew != 1) continue;
                               }
 
                               final int durationMinutes = rawEnd - rawStart;
