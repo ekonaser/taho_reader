@@ -25,7 +25,7 @@ class TachoPdfGenerator {
 
     final summary = ActivitySummary();
     for (var day in days) {
-      final s = calculateDaySummary(day, utcOffset, under50km);
+      final s = calculateDaySummary(day, utcOffset, under50km, days);
       summary.rest += s.rest;
       summary.availability += s.availability;
       summary.work += s.work;
@@ -156,7 +156,7 @@ class TachoPdfGenerator {
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
             data: days.map((day) {
-              final s = calculateDaySummary(day, utcOffset, under50km);
+              final s = calculateDaySummary(day, utcOffset, under50km, days);
               return [
                 day.date.toLocal().toString().split(' ').first,
                 formatDur(s.driving),
@@ -197,6 +197,7 @@ class TachoPdfGenerator {
     bool openImmediately = false,
     bool share = false,
     bool includeDetailedTimeline = false,
+    required List<DailyActivities> allActivities,
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
@@ -213,7 +214,7 @@ class TachoPdfGenerator {
         .toList();
     dayEvents.sort((a, b) => b.date.compareTo(a.date));
 
-    final pdfSummary = calculateDaySummary(day, utcOffset, under50km);
+    final pdfSummary = calculateDaySummary(day, utcOffset, under50km, allActivities);
 
     doc.addPage(
       pw.MultiPage(
@@ -439,190 +440,103 @@ class TachoPdfGenerator {
                             canvas.lineTo(trackLeft, axisBottom);
                             canvas.strokePath();
 
-                            final activities = day.activities;
+                            // Flatten all activities for context
+                            List<({DateTime time, ActivityRecord rec})> allFlat = [];
+                            for (var d in allActivities) {
+                              for (var act in d.activities) {
+                                allFlat.add((
+                                  time: d.header.time.add(Duration(minutes: act.time)),
+                                  rec: act
+                                ));
+                              }
+                            }
+                            allFlat.sort((a, b) {
+                              int cmp = a.time.compareTo(b.time);
+                              if (cmp != 0) return cmp;
+                              if (a.rec.card != b.rec.card) {
+                                return a.rec.card.compareTo(b.rec.card);
+                              }
+                              return b.rec.slot.compareTo(a.rec.slot);
+                            });
+
+                            final DateTime displayStart = day.header.time;
+                            final DateTime displayEnd = displayStart.add(const Duration(minutes: 27 * 60));
+
+                            ActivityRecord? lastRec;
+                            int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+                            if (startIdx != -1) {
+                              lastRec = allFlat[startIdx].rec;
+                            }
+
+                            DateTime currentDayPtr = displayStart;
                             int accumulatedDriving = 0;
                             bool hasFirstBreakPart = false;
 
-                            if (activities.length == 1) {
-                              final prev = activities.first;
-                              if (prev.card != 0) {
-                                int rawStart = prev.time;
-                                int rawEnd = rawStart + 1440;
-                                final int localStart =
-                                    rawStart + utcOffset * 60;
-                                final int localEnd = rawEnd + utcOffset * 60;
-                                final int clipStart = localStart.clamp(
-                                  0,
-                                  timelineMinutes,
-                                );
-                                final int clipEnd = localEnd.clamp(
-                                  0,
-                                  timelineMinutes,
-                                );
-                                if (clipEnd > clipStart) {
-                                  final double y =
-                                      axisBottom - clipEnd * minuteHeight;
-                                  final double hRect = max(
-                                    2.0,
-                                    (clipEnd - clipStart) * minuteHeight,
-                                  );
-                                  final double x = prev.slot == 1
-                                      ? slot2X
-                                      : slot1X;
-                                  final double w = slotBlockWidth;
-                                  final PdfColor fillColor =
-                                      _getActivityPdfColor(
-                                        prev.activity,
-                                        pdfPrimaryGreen,
-                                      );
-                                  drawBlock(x, y, w, hRect, fillColor);
+                            void processSegment(ActivityRecord rec, DateTime start, DateTime end) {
+                              final int localStart = start.difference(displayStart).inMinutes;
+                              final int localEnd = end.difference(displayStart).inMinutes;
+                              final int clipStart = localStart.clamp(0, timelineMinutes);
+                              final int clipEnd = localEnd.clamp(0, timelineMinutes);
+                              if (clipEnd <= clipStart) return;
 
-                                  if (prev.crew == 1) {
-                                    canvas.setStrokeColor(PdfColors.indigo);
-                                    canvas.setLineWidth(3.5);
-                                    canvas.moveTo(x, y);
-                                    canvas.lineTo(x, y + hRect);
-                                    canvas.strokePath();
-                                  }
-                                }
-                              }
-                            }
-
-                            for (int i = 1; i < activities.length; i++) {
-                              final prev = activities[i - 1];
-                              final curr = activities[i];
-                              int rawStart = prev.time;
-                              int rawEnd = curr.time;
-                              if (rawEnd < rawStart) rawEnd += 1440;
-
-                              if (prev.card == 0) {
-                                accumulatedDriving = 0;
-                                hasFirstBreakPart = false;
-                                if (prev.crew != 1) continue;
-                              }
-
-                              final int durationMinutes = rawEnd - rawStart;
-                              if (durationMinutes <= 0) continue;
-
-                              final int localStart = rawStart + utcOffset * 60;
-                              final int localEnd = rawEnd + utcOffset * 60;
-                              final int clipStart = localStart.clamp(
-                                0,
-                                timelineMinutes,
-                              );
-                              final int clipEnd = localEnd.clamp(
-                                0,
-                                timelineMinutes,
-                              );
-                              if (clipEnd <= clipStart) continue;
-
-                              final double y =
-                                  axisBottom - clipEnd * minuteHeight;
-                              final double hRect = max(
-                                2.0,
-                                (clipEnd - clipStart) * minuteHeight,
-                              );
-                              final double x = prev.slot == 1 ? slot2X : slot1X;
+                              final double y = axisBottom - clipEnd * minuteHeight;
+                              final double hRect = max(2.0, (clipEnd - clipStart) * minuteHeight);
+                              final double x = rec.slot == 1 ? slot2X : slot1X;
                               final double w = slotBlockWidth;
+                              final int durationMinutes = end.difference(start).inMinutes;
 
-                              PdfColor fillColor = _getActivityPdfColor(
-                                prev.activity,
-                                pdfPrimaryGreen,
-                              );
+                              PdfColor fillColor = _getActivityPdfColor(rec.activity, pdfPrimaryGreen);
 
-                              bool drewOverdrive = false;
                               if (!under50km) {
-                                if (prev.activity == 0 || prev.activity == 1) {
+                                if (rec.activity == 0 || rec.activity == 1) {
                                   if (durationMinutes >= 45) {
                                     accumulatedDriving = 0;
                                     hasFirstBreakPart = false;
-                                  } else if (durationMinutes >= 30 &&
-                                      hasFirstBreakPart) {
+                                  } else if (durationMinutes >= 30 && hasFirstBreakPart) {
                                     accumulatedDriving = 0;
                                     hasFirstBreakPart = false;
-                                  } else if (durationMinutes >= 15 &&
-                                      !hasFirstBreakPart) {
+                                  } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
                                     hasFirstBreakPart = true;
                                   }
-                                } else if (prev.activity == 3) {
+                                } else if (rec.activity == 3) {
                                   accumulatedDriving += durationMinutes;
                                   if (accumulatedDriving > 270) {
-                                    final int overMinutes =
-                                        accumulatedDriving - 270;
-                                    final int regularMinutes =
-                                        durationMinutes - overMinutes;
-                                    final int regularEndMinutes =
-                                        localStart + regularMinutes;
-                                    final int overStartMinutes =
-                                        regularEndMinutes;
-                                    final int overEndMinutes = localEnd;
-
-                                    final int blueClipStart = localStart.clamp(
-                                      0,
-                                      timelineMinutes,
-                                    );
-                                    final int blueClipEnd = regularEndMinutes
-                                        .clamp(0, timelineMinutes);
-                                    final int redClipStart = overStartMinutes
-                                        .clamp(0, timelineMinutes);
-                                    final int redClipEnd = overEndMinutes.clamp(
-                                      0,
-                                      timelineMinutes,
-                                    );
-
-                                    if (blueClipEnd > blueClipStart) {
-                                      final double blueY =
-                                          axisBottom -
-                                          blueClipEnd * minuteHeight;
-                                      final double blueHeight = max(
-                                        2.0,
-                                        (blueClipEnd - blueClipStart) *
-                                            minuteHeight,
-                                      );
-                                      drawBlock(
-                                        x,
-                                        blueY,
-                                        w,
-                                        blueHeight,
-                                        PdfColors.blue,
-                                      );
+                                    double overdriveMin = (accumulatedDriving - 270).toDouble();
+                                    double regularMin = durationMinutes - overdriveMin;
+                                    if (regularMin > 0) {
+                                      drawBlock(x, y + overdriveMin * minuteHeight, w, regularMin * minuteHeight, PdfColors.blue);
                                     }
-
-                                    if (redClipEnd > redClipStart) {
-                                      final double redY =
-                                          axisBottom -
-                                          redClipEnd * minuteHeight;
-                                      final double redHeight = max(
-                                        2.0,
-                                        (redClipEnd - redClipStart) *
-                                            minuteHeight,
-                                      );
-                                      drawBlock(
-                                        x,
-                                        redY,
-                                        w,
-                                        redHeight,
-                                        PdfColors.red,
-                                      );
-                                    }
-
+                                    drawBlock(x, y, w, overdriveMin * minuteHeight, PdfColors.red);
                                     accumulatedDriving = 270;
-                                    drewOverdrive = true;
+                                    fillColor = PdfColor.fromInt(0x00000000);
                                   }
                                 }
                               }
 
-                              if (!drewOverdrive && durationMinutes > 0) {
+                              if (fillColor != PdfColor.fromInt(0x00000000)) {
                                 drawBlock(x, y, w, hRect, fillColor);
                               }
-
-                              if (prev.crew == 1) {
+                              if (rec.crew == 1) {
                                 canvas.setStrokeColor(PdfColors.indigo);
                                 canvas.setLineWidth(3.5);
                                 canvas.moveTo(x, y);
                                 canvas.lineTo(x, y + hRect);
                                 canvas.strokePath();
                               }
+                            }
+
+                            for (var entry in allFlat) {
+                              if (entry.time.isAfter(displayEnd)) break;
+                              if (entry.time.isAfter(displayStart)) {
+                                if (lastRec != null) {
+                                  processSegment(lastRec, currentDayPtr, entry.time);
+                                }
+                                currentDayPtr = entry.time;
+                                lastRec = entry.rec;
+                              }
+                            }
+                            if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
+                              processSegment(lastRec, currentDayPtr, displayEnd);
                             }
 
                             // --- DRAW COUNTRIES (PLACES) ---
@@ -1243,28 +1157,73 @@ class TachoPdfGenerator {
     DailyActivities day,
     int utcOffset,
     bool under50km,
+    List<DailyActivities> allActivities,
   ) {
-    final s = ActivitySummary();
-    s.totalKm = day.header.km;
-    for (int i = 1; i < day.activities.length; i++) {
-      int dur = day.activities[i].time - day.activities[i - 1].time;
-      if (dur <= 0) continue;
-      switch (day.activities[i - 1].activity) {
-        case 0:
-          s.rest += dur;
-          break;
-        case 1:
-          s.availability += dur;
-          break;
-        case 2:
-          s.work += dur;
-          break;
-        case 3:
-          s.driving += dur;
-          break;
+    final summary = ActivitySummary();
+    summary.totalKm = day.header.km;
+
+    // 1. Flatten all activities for context
+    List<({DateTime time, ActivityRecord rec})> allFlat = [];
+    for (var d in allActivities) {
+      for (var act in d.activities) {
+        allFlat.add((
+          time: d.header.time.add(Duration(minutes: act.time)),
+          rec: act
+        ));
       }
     }
-    return s;
+    allFlat.sort((a, b) {
+      int cmp = a.time.compareTo(b.time);
+      if (cmp != 0) return cmp;
+      if (a.rec.card != b.rec.card) {
+        return a.rec.card.compareTo(b.rec.card);
+      }
+      return b.rec.slot.compareTo(a.rec.slot);
+    });
+
+    // 2. Day boundaries
+    final DateTime displayStart = day.header.time;
+    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+
+    // 3. Find starting record
+    ActivityRecord? lastRec;
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    if (startIdx != -1) {
+      lastRec = allFlat[startIdx].rec;
+    }
+
+    DateTime currentDayPtr = displayStart;
+
+    void process(ActivityRecord rec, DateTime start, DateTime end) {
+      final duration = end.difference(start).inMinutes;
+      if (duration <= 0) return;
+
+      switch (rec.activity) {
+        case 0: summary.rest += duration; break;
+        case 1: summary.availability += duration; break;
+        case 2: summary.work += duration; break;
+        case 3: summary.driving += duration; break;
+      }
+    }
+
+    // 4. Iterate
+    for (var entry in allFlat) {
+      if (entry.time.isAfter(displayEnd)) break;
+      if (entry.time.isAfter(displayStart)) {
+        if (lastRec != null) {
+          process(lastRec, currentDayPtr, entry.time);
+        }
+        currentDayPtr = entry.time;
+        lastRec = entry.rec;
+      }
+    }
+
+    // 5. Final
+    if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
+      process(lastRec, currentDayPtr, displayEnd);
+    }
+
+    return summary;
   }
 
   static Future<void> _finalizePdf(

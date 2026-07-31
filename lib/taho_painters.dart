@@ -84,20 +84,6 @@ class TahoRestPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class TahoSessionPainter extends CustomPainter {
-  final Color color;
-  const TahoSessionPainter({this.color = Colors.black});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2;
-    canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height), paint);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class TahoCrewPainter extends CustomPainter {
   final Color color;
   const TahoCrewPainter({this.color = Colors.indigo});
