@@ -25,7 +25,7 @@ class TachoPdfGenerator {
 
     final summary = ActivitySummary();
     for (var day in days) {
-      final s = calculateDaySummary(day, utcOffset, under50km, days);
+      final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: true);
       summary.rest += s.rest;
       summary.availability += s.availability;
       summary.work += s.work;
@@ -328,7 +328,7 @@ class TachoPdfGenerator {
             ),
             pw.Divider(thickness: 1, color: pdfPrimaryGreen),
             pw.SizedBox(height: 10),
-            _buildVerticalPdfTimeline(day, pdfPrimaryGreen, utcOffset),
+            _buildVerticalPdfTimeline(day, pdfPrimaryGreen, utcOffset, allActivities),
             if (dayEvents.isNotEmpty) ...[
               pw.SizedBox(height: 20),
               _buildEventsSection(dayEvents, pdfPrimaryGreen),
@@ -453,9 +453,8 @@ class TachoPdfGenerator {
                             allFlat.sort((a, b) {
                               int cmp = a.time.compareTo(b.time);
                               if (cmp != 0) return cmp;
-                              if (a.rec.card != b.rec.card) {
-                                return a.rec.card.compareTo(b.rec.card);
-                              }
+                              if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+                              if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
                               return b.rec.slot.compareTo(a.rec.slot);
                             });
 
@@ -826,88 +825,143 @@ class TachoPdfGenerator {
     DailyActivities day,
     PdfColor primary,
     int utcOffset,
+    List<DailyActivities> allActivities,
   ) {
     List<pw.Widget> rows = [];
-    if (day.activities.isEmpty) return pw.Text("No activities recorded");
 
-    int prevTime = day.activities.first.time;
-    for (int i = 1; i < day.activities.length; i++) {
-      final activity = day.activities[i - 1];
-      final nextActivity = day.activities[i];
-      int duration = nextActivity.time - prevTime;
+    // 1. Flatten all activities from all days for context
+    List<({DateTime time, ActivityRecord rec})> allFlat = [];
+    for (var d in allActivities) {
+      for (var act in d.activities) {
+        allFlat.add((
+          time: d.header.time.add(Duration(minutes: act.time)),
+          rec: act,
+        ));
+      }
+    }
+    allFlat.sort((a, b) {
+      int cmp = a.time.compareTo(b.time);
+      if (cmp != 0) return cmp;
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
+      return b.rec.slot.compareTo(a.rec.slot);
+    });
 
-      if (duration > 0) {
-        rows.add(
-          pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 2),
-            child: pw.Row(
-              children: [
-                pw.SizedBox(
-                  width: 60,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                        formatPdfTime(prevTime, utcOffset),
-                        style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                      pw.Text(
-                        formatPdfTime(nextActivity.time, utcOffset),
-                        style: pw.TextStyle(
-                          fontSize: 7,
-                          color: PdfColors.grey600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                pw.SizedBox(width: 10),
-                pw.Column(
+    // 2. Define the display boundaries for this specific day (Local 00:00 to 24:00)
+    final DateTime displayStart = day.header.time;
+    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+
+    // 3. Find the active record at the very start of this day
+    ActivityRecord? lastRec;
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    if (startIdx != -1) {
+      lastRec = allFlat[startIdx].rec;
+    }
+
+    DateTime currentDayPtr = displayStart;
+
+    void addRow(ActivityRecord rec, DateTime start, DateTime end) {
+      final duration = end.difference(start).inMinutes;
+      if (duration <= 0) return;
+
+      // Skip gaps (no card and no crew manual entry)
+      if (rec.card == 0 && rec.crew == 0) return;
+
+      final startOffset = start.difference(displayStart).inMinutes;
+      final endOffset = end.difference(displayStart).inMinutes;
+
+      String label = _getActivityName(rec.activity);
+      if (rec.crew == 1) label += " (Crew)";
+      label += rec.slot == 1 ? " (Slot 2)" : " (Slot 1)";
+
+      rows.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Row(
+            children: [
+              pw.SizedBox(
+                width: 60,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Container(width: 1, height: 6, color: PdfColors.grey300),
-                    _buildPdfIcon(
-                      activity.activity,
-                      _getActivityPdfColor(activity.activity, primary),
+                    pw.Text(
+                      formatPdfTime(startOffset, utcOffset),
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
-                    pw.Container(width: 1, height: 6, color: PdfColors.grey300),
+                    pw.Text(
+                      formatPdfTime(endOffset, utcOffset),
+                      style: pw.TextStyle(
+                        fontSize: 7,
+                        color: PdfColors.grey600,
+                      ),
+                    ),
                   ],
                 ),
-                pw.SizedBox(width: 10),
-                pw.Expanded(
-                  child: pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text(
-                        _getActivityName(activity.activity),
-                        style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                      pw.Text(
-                        "${duration ~/ 60}h ${duration % 60}m",
-                        style: pw.TextStyle(
-                          fontSize: 9,
-                          color: _getActivityPdfColor(
-                            activity.activity,
-                            primary,
-                          ),
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
+              ),
+              pw.SizedBox(width: 10),
+              pw.Column(
+                children: [
+                  pw.Container(width: 1, height: 6, color: PdfColors.grey300),
+                  _buildPdfIcon(
+                    rec.activity,
+                    _getActivityPdfColor(rec.activity, primary),
                   ),
+                  pw.Container(width: 1, height: 6, color: PdfColors.grey300),
+                ],
+              ),
+              pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      label,
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      "${duration ~/ 60}h ${duration % 60}m",
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        color: _getActivityPdfColor(
+                          rec.activity,
+                          primary,
+                        ),
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-      }
-      prevTime = nextActivity.time;
+        ),
+      );
     }
+
+    // 4. Iterate through activities
+    for (var entry in allFlat) {
+      if (entry.time.isAfter(displayEnd)) break;
+      if (entry.time.isAfter(displayStart)) {
+        if (lastRec != null) {
+          addRow(lastRec, currentDayPtr, entry.time);
+        }
+        currentDayPtr = entry.time;
+        lastRec = entry.rec;
+      }
+    }
+
+    // 5. Final segment to 24:00
+    if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
+      addRow(lastRec, currentDayPtr, displayEnd);
+    }
+
+    if (rows.isEmpty) return pw.Text("No activities recorded");
     return pw.Column(children: rows);
   }
 
@@ -1157,8 +1211,9 @@ class TachoPdfGenerator {
     DailyActivities day,
     int utcOffset,
     bool under50km,
-    List<DailyActivities> allActivities,
-  ) {
+    List<DailyActivities> allActivities, {
+    bool onlyCard = false,
+  }) {
     final summary = ActivitySummary();
     summary.totalKm = day.header.km;
 
@@ -1175,9 +1230,8 @@ class TachoPdfGenerator {
     allFlat.sort((a, b) {
       int cmp = a.time.compareTo(b.time);
       if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) {
-        return a.rec.card.compareTo(b.rec.card);
-      }
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
@@ -1197,6 +1251,14 @@ class TachoPdfGenerator {
     void process(ActivityRecord rec, DateTime start, DateTime end) {
       final duration = end.difference(start).inMinutes;
       if (duration <= 0) return;
+
+      // Skip gaps: for Period/Monthly we count only card == 1.
+      // For Daily we count card == 1 OR crew == 1.
+      if (onlyCard) {
+        if (rec.card != 1) return;
+      } else {
+        if (rec.card == 0 && rec.crew == 0) return;
+      }
 
       switch (rec.activity) {
         case 0: summary.rest += duration; break;

@@ -698,11 +698,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     allFlat.sort((a, b) {
       int cmp = a.time.compareTo(b.time);
       if (cmp != 0) return cmp;
-      // If same timestamp, prioritize card presence
-      if (a.rec.card != b.rec.card) {
-        return a.rec.card.compareTo(b.rec.card);
-      }
-      // If both have cards (or neither), prioritize Slot 1 (slot 0)
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
@@ -1266,9 +1263,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     allFlat.sort((a, b) {
       int cmp = a.time.compareTo(b.time);
       if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) {
-        return a.rec.card.compareTo(b.rec.card);
-      }
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
@@ -1304,6 +1300,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           durationMinutes,
           primaryGreen,
           rec.slot,
+          rec.crew == 1,
         ),
       );
     }
@@ -1335,6 +1332,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     int duration,
     Color primaryGreen,
     int slot,
+    bool isCrew,
   ) {
     String label;
     CustomPainter painter;
@@ -1380,7 +1378,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final durStr =
         "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
 
-    final String slotStr = slot == 1 ? " (Slot 2)" : " (Slot 1)";
+    String displayLabel = label;
+    if (isCrew) displayLabel += " (Crew)";
+    displayLabel += slot == 1 ? " (Slot 2)" : " (Slot 1)";
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1403,7 +1403,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                label + slotStr,
+                displayLabel,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -1536,9 +1536,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     allFlat.sort((a, b) {
       int cmp = a.time.compareTo(b.time);
       if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) {
-        return a.rec.card.compareTo(b.rec.card);
-      }
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
