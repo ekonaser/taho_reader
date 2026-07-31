@@ -150,12 +150,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         Expanded(
           child: widget.activities.isEmpty
               ? Center(
-            child: Text(
-              "No activity data found.\nUpload a file or read a card.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-            ),
-          )
+                  child: Text(
+                    "No activity data found.\nUpload a file or read a card.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                )
               : _buildContent(day: _getCurrentDay()),
         ),
       ],
@@ -177,8 +177,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
     if (widget.selectedDate != null) {
       return widget.activities.firstWhere(
-            (a) =>
-        a.date.year == widget.selectedDate!.year &&
+        (a) =>
+            a.date.year == widget.selectedDate!.year &&
             a.date.month == widget.selectedDate!.month &&
             a.date.day == widget.selectedDate!.day,
         orElse: () => widget.activities.first,
@@ -355,7 +355,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                         mainAxisSize: MainAxisSize.min,
                         children: List.generate(
                           27,
-                              (h) => Container(
+                          (h) => Container(
                             width: _hourWidth,
                             height: double.infinity,
                             decoration: BoxDecoration(
@@ -569,12 +569,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _buildSummaryHeader(
-      String title,
-      String subtitle,
-      Color primaryGreen, {
-        Widget? trailing,
-        VoidCallback? onExport,
-      }) {
+    String title,
+    String subtitle,
+    Color primaryGreen, {
+    Widget? trailing,
+    VoidCallback? onExport,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
@@ -717,7 +717,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
     // 4. Create the timeline for the period
     ActivityRecord? activeRec;
-    int startIndex = allFlat.lastIndexWhere((e) => !e.time.isAfter(periodStart));
+    int startIndex = allFlat.lastIndexWhere(
+      (e) => !e.time.isAfter(periodStart),
+    );
     if (startIndex != -1) {
       activeRec = allFlat[startIndex].rec;
     }
@@ -744,11 +746,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       if (rec == null) continue;
 
+      // Only count activities recorded under card == 1 in Period/Monthly summaries.
+      // Activities with card == 0 and crew == 1 will be added later.
+      if (rec.card != 1) continue;
+
       final duration = next.time.difference(curr.time).inMinutes;
       if (duration <= 0) continue;
-
-      // Gap logic: card == 0 and crew == 0 means transparent gap
-      //if (rec.card == 0 && rec.crew == 0) continue;
 
       switch (rec.activity) {
         case 0: // Rest
@@ -805,7 +808,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final filteredDays = widget.activities
         .where(
           (day) => day.date.year == targetYear && day.date.month == targetMonth,
-    )
+        )
         .toList();
 
     return _calculateSummary(filteredDays);
@@ -819,14 +822,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           _startDate!.month,
           _startDate!.day,
         ).millisecondsSinceEpoch ~/
-            1000;
+        1000;
     final endTs =
         DateTime.utc(
           _endDate!.year,
           _endDate!.month,
           _endDate!.day,
         ).millisecondsSinceEpoch ~/
-            1000;
+        1000;
     final Set<int> eligibleDays = {};
     for (int ts = startTs; ts <= endTs; ts += 86400) {
       eligibleDays.add(ts);
@@ -835,7 +838,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       final dt = day.date.toUtc();
       final ts =
           DateTime.utc(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/
-              1000;
+          1000;
       return eligibleDays.contains(ts);
     }).toList();
   }
@@ -844,9 +847,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     return widget.activities
         .where(
           (day) =>
-      day.date.year == _selectedMonth.year &&
-          day.date.month == _selectedMonth.month,
-    )
+              day.date.year == _selectedMonth.year &&
+              day.date.month == _selectedMonth.month,
+        )
         .toList();
   }
 
@@ -896,7 +899,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.red,
+                  size: 16,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   "Overdrive: ${summary.overdrive ~/ 60}h ${summary.overdrive % 60}m",
@@ -979,7 +986,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               final key = sortedKeys[index];
               final isSelected =
                   key ==
-                      "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}";
+                  "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}";
               return ListTile(
                 title: Text(
                   key,
@@ -1005,12 +1012,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _summaryCard(
-      dynamic iconOrPainter,
-      String label,
-      int minutes,
-      Color color, {
-        String? valueOverride,
-      }) {
+    dynamic iconOrPainter,
+    String label,
+    int minutes,
+    Color color, {
+    String? valueOverride,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final h = minutes ~/ 60;
@@ -1172,11 +1179,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   void _showSummaryExportOptions(
-      List<DailyActivities> days,
-      String title,
-      String rangeStr,
-      Color primaryGreen,
-      ) {
+    List<DailyActivities> days,
+    String title,
+    String rangeStr,
+    Color primaryGreen,
+  ) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -1251,8 +1258,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     for (var d in widget.activities) {
       for (var act in d.activities) {
         allFlat.add((
-        time: d.header.time.add(Duration(minutes: act.time)),
-        rec: act
+          time: d.header.time.add(Duration(minutes: act.time)),
+          rec: act,
         ));
       }
     }
@@ -1322,13 +1329,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _activityLogItem(
-      int type,
-      int start,
-      int end,
-      int duration,
-      Color primaryGreen,
-      int slot,
-      ) {
+    int type,
+    int start,
+    int end,
+    int duration,
+    Color primaryGreen,
+    int slot,
+  ) {
     String label;
     CustomPainter painter;
     Color color;
@@ -1509,9 +1516,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
   // Natančen prevod C++ metode DrawOneDay(BYTE* ptr, int counter, ActivityData& pData)
   List<Widget> _buildRecursiveTimeline(
-      DailyActivities day,
-      Color primaryGreen,
-      ) {
+    DailyActivities day,
+    Color primaryGreen,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     List<Widget> widgets = [];
     _summary.reset();
@@ -1521,8 +1528,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     for (var d in widget.activities) {
       for (var act in d.activities) {
         allFlat.add((
-        time: d.header.time.add(Duration(minutes: act.time)),
-        rec: act
+          time: d.header.time.add(Duration(minutes: act.time)),
+          rec: act,
         ));
       }
     }
@@ -1610,15 +1617,24 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               double regularDuration =
                   (270 - (accumulatedDriving - durationMinutes)) / 60.0;
               if (regularDuration > 0) {
-                widgets.add(_buildActivityBlock(
-                    startH + widget.utcOffset, regularDuration, Colors.blue, rec.slot));
+                widgets.add(
+                  _buildActivityBlock(
+                    startH + widget.utcOffset,
+                    regularDuration,
+                    Colors.blue,
+                    rec.slot,
+                  ),
+                );
               }
               double overdriveDuration = (accumulatedDriving - 270) / 60.0;
-              widgets.add(_buildActivityBlock(
+              widgets.add(
+                _buildActivityBlock(
                   startH + widget.utcOffset + max(0, regularDuration),
                   overdriveDuration,
                   Colors.red,
-                  rec.slot));
+                  rec.slot,
+                ),
+              );
               accumulatedDriving = 270;
               color = Colors.transparent;
             } else {
@@ -1634,13 +1650,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
 
       if (color != Colors.transparent) {
-        widgets.add(_buildActivityBlock(
-            startH + widget.utcOffset, endH - startH, color, rec.slot));
+        widgets.add(
+          _buildActivityBlock(
+            startH + widget.utcOffset,
+            endH - startH,
+            color,
+            rec.slot,
+          ),
+        );
       }
 
       if (rec.crew == 1) {
-        widgets.add(_buildCrewLine(
-            startH + widget.utcOffset, endH - startH, rec.slot));
+        widgets.add(
+          _buildCrewLine(startH + widget.utcOffset, endH - startH, rec.slot),
+        );
       }
     }
 
@@ -1653,7 +1676,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     for (var entry in allFlat) {
       if (entry.time.isAfter(displayEnd)) break;
       if (entry.time.isAfter(displayStart)) {
-        double entryHour = entry.time.difference(displayStart).inSeconds / 3600.0;
+        double entryHour =
+            entry.time.difference(displayStart).inSeconds / 3600.0;
 
         if (lastRec != null) {
           processSegment(lastRec, currentHour, entryHour);
@@ -1783,8 +1807,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   Widget _buildEventMarker(DriverEvent event) {
     final double hour =
         (event.date.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) %
-            86400 /
-            3600.0;
+        86400 /
+        3600.0;
     final color = _getEventColor(event.type);
 
     return Positioned(
@@ -2003,8 +2027,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     // type: 0 = start (insertion), 1 = end (withdrawal)
     final double hour =
         (entryTime.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) %
-            86400 /
-            3600.0;
+        86400 /
+        3600.0;
 
     final String country = _getCountryCode(countryCode);
 
@@ -2038,11 +2062,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   Widget _buildActivityBlock(
-      double startHour,
-      double durationHours,
-      Color color,
-      int slot,
-      ) {
+    double startHour,
+    double durationHours,
+    Color color,
+    int slot,
+  ) {
     final double blockWidth = max(2.0, durationHours * _hourWidth);
     // slot == 0 -> Driver (Bottom), slot == 1 -> Co-driver (Top)
     final double top = slot == 1 ? 5 : 43;
