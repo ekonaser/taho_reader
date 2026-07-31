@@ -140,6 +140,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
     setState(() {
       _isGen2View = prefs.getBool('isGen2View') ?? false;
       _under50km = prefs.getBool('under50km') ?? false;
+      _utcOffset = prefs.getInt('utcOffset') ?? 0;
     });
     if (gen1Card != null || gen2Card != null) {
       _updateParsedData();
@@ -722,6 +723,12 @@ class _TahoDashboardState extends State<TahoDashboard> {
         builder: (context) => SettingsScreen(
           isGen2View: _isGen2View,
           onGen2ViewChanged: _toggleGen2View,
+          utcOffset: _utcOffset,
+          onUtcOffsetChanged: (val) async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt('utcOffset', val);
+            setState(() => _utcOffset = val);
+          },
         ),
       ),
     );
@@ -920,7 +927,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
               cardId: cardId,
               selectedDate: _selectedActivityDate,
               utcOffset: _utcOffset,
-              onUtcOffsetChanged: (offset) => setState(() => _utcOffset = offset),
+              onUtcOffsetChanged: (offset) async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setInt('utcOffset', offset);
+                setState(() => _utcOffset = offset);
+              },
               onDateTap: _selectActivityDate,
               onPrevDay: () => _jumpToActivityDay(1), // Older
               onNextDay: () => _jumpToActivityDay(-1), // Newer
@@ -1342,11 +1353,15 @@ class SpeedDialAction {
 class SettingsScreen extends StatefulWidget {
   final bool isGen2View;
   final ValueChanged<bool> onGen2ViewChanged;
+  final int utcOffset;
+  final ValueChanged<int> onUtcOffsetChanged;
 
   const SettingsScreen({
     super.key,
     required this.isGen2View,
     required this.onGen2ViewChanged,
+    required this.utcOffset,
+    required this.onUtcOffsetChanged,
   });
 
   @override
@@ -1356,11 +1371,13 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late bool _localIsGen2View;
   bool _under50km = false;
+  late int _utcOffset;
 
   @override
   void initState() {
     super.initState();
     _localIsGen2View = widget.isGen2View;
+    _utcOffset = widget.utcOffset;
     _loadUnder50km();
   }
 
@@ -1417,6 +1434,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
             activeColor: const Color(0xFF28B52F),
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              "UTC Offset",
+              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF28B52F)),
+            ),
+          ),
+          ListTile(
+            title: const Text("Time Zone (UTC)"),
+            subtitle: Text("Current offset: ${_utcOffset >= 0 ? '+' : ''}$_utcOffset hours"),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline),
+                  onPressed: () {
+                    final newVal = _utcOffset == -12 ? 14 : _utcOffset - 1;
+                    setState(() => _utcOffset = newVal);
+                    widget.onUtcOffsetChanged(newVal);
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () {
+                    final newVal = _utcOffset == 14 ? -12 : _utcOffset + 1;
+                    setState(() => _utcOffset = newVal);
+                    widget.onUtcOffsetChanged(newVal);
+                  },
+                ),
+              ],
+            ),
           ),
           const Divider(),
           const Padding(

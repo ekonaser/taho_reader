@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
@@ -53,7 +54,10 @@ enum _ViewMode { daily, period, monthly }
 
 class _ActivityTimelineState extends State<ActivityTimeline> {
   double _hourWidth = 120.0;
+  double _baseHourWidth = 120.0;
   final ActivitySummary _summary = ActivitySummary();
+  final Map<int, Offset> _pointerPositions = {};
+  double _initialPinchDistance = 0.0;
   late _ViewMode _viewMode;
   DateTime _selectedMonth = DateTime.now();
   DateTime? _startDate;
@@ -245,44 +249,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.zoom_out,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                  Expanded(
-                    child: Slider(
-                      value: _hourWidth,
-                      min: 70.0,
-                      max: 500.0,
-                      activeColor: primaryGreen,
-                      onChanged: (val) => setState(() => _hourWidth = val),
-                    ),
-                  ),
-                  Icon(
-                    Icons.zoom_in,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 42,
-                    child: Text(
-                      "${(_hourWidth / 70.0).toStringAsFixed(1)}x",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Row(
@@ -342,72 +309,116 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               ),
             ),
             SizedBox(
+              width: double.infinity,
               height: 200,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: Container(
-                  width: totalWidth + 80,
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: List.generate(
-                          27,
-                          (h) => Container(
-                            width: _hourWidth,
-                            height: double.infinity,
-                            decoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: colorScheme.outlineVariant.withValues(
-                                    alpha: 0.5,
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (event) {
+                    _pointerPositions[event.pointer] = event.position;
+                    if (_pointerPositions.length == 2) {
+                      _baseHourWidth = _hourWidth;
+                      final points = _pointerPositions.values.toList();
+                      _initialPinchDistance = (points[0] - points[1]).distance;
+                    }
+                  },
+                  onPointerMove: (event) {
+                    if (_pointerPositions.length == 2) {
+                      _pointerPositions[event.pointer] = event.position;
+                      final points = _pointerPositions.values.toList();
+                      final currentDistance = (points[0] - points[1]).distance;
+
+                      if (_initialPinchDistance > 0) {
+                        final scale = currentDistance / _initialPinchDistance;
+                        setState(() {
+                          _hourWidth = (_baseHourWidth * scale).clamp(
+                            70.0,
+                            500.0,
+                          );
+                        });
+                      }
+                    }
+                  },
+                  onPointerUp: (event) {
+                    _pointerPositions.remove(event.pointer);
+                    if (_pointerPositions.length < 2) {
+                      _baseHourWidth = _hourWidth;
+                      _initialPinchDistance = 0;
+                    }
+                  },
+                  onPointerCancel: (event) {
+                    _pointerPositions.remove(event.pointer);
+                    if (_pointerPositions.length < 2) {
+                      _baseHourWidth = _hourWidth;
+                      _initialPinchDistance = 0;
+                    }
+                  },
+                  child: Container(
+                    width: totalWidth + 80,
+                    height: 200,
+                    color: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: List.generate(
+                            27,
+                            (h) => Container(
+                              width: _hourWidth,
+                              height: double.infinity,
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(
+                                    color: colorScheme.outlineVariant
+                                        .withValues(alpha: 0.5),
+                                    width: 1,
                                   ),
-                                  width: 1,
                                 ),
                               ),
-                            ),
-                            child: Stack(
-                              children: [
-                                ..._buildMinuteMarkers(h),
-                                Align(
-                                  alignment: Alignment.bottomLeft,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: 4,
-                                      bottom: 8,
-                                    ),
-                                    child: Text(
-                                      "${(h % 24).toString().padLeft(2, '0')}:00",
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: colorScheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.bold,
+                              child: Stack(
+                                children: [
+                                  ..._buildMinuteMarkers(h),
+                                  Align(
+                                    alignment: Alignment.bottomLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 4,
+                                        bottom: 8,
+                                      ),
+                                      child: Text(
+                                        "${(h % 24).toString().padLeft(2, '0')}:00",
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: colorScheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        top: 40,
-                        left: 0,
-                        right: 0,
-                        height: 80,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            ..._buildRecursiveTimeline(day, primaryGreen),
-                            ..._buildPlaceMarkers(day),
-                            ..._buildEventMarkers(day),
-                          ],
+                        Positioned(
+                          top: 40,
+                          left: 0,
+                          right: 0,
+                          height: 80,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              ..._buildRecursiveTimeline(day, primaryGreen),
+                              ..._buildPlaceMarkers(day),
+                              ..._buildEventMarkers(day),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -703,14 +714,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 3. Define the period boundaries
+    // 3. Define the period boundaries in Local Time
     var sortedFiltered = List<DailyActivities>.from(filteredDays);
     sortedFiltered.sort((a, b) => a.header.time.compareTo(b.header.time));
 
-    final DateTime periodStart = sortedFiltered.first.header.time;
-    final DateTime periodEnd = sortedFiltered.last.header.time.add(
-      const Duration(days: 1),
+    final DateTime periodStart = sortedFiltered.first.header.time.subtract(
+      Duration(hours: widget.utcOffset),
     );
+    final DateTime periodEnd = sortedFiltered.last.header.time
+        .subtract(Duration(hours: widget.utcOffset))
+        .add(const Duration(days: 1));
 
     // 4. Create the timeline for the period
     ActivityRecord? activeRec;
@@ -1268,18 +1281,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 2. Define the display boundaries for this specific day (Local 00:00 to 24:00)
-    final DateTime displayStart = day.header.time;
-    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+    // 2. Define the window boundaries in UTC based on the local offset
+    final DateTime windowStart = day.header.time.subtract(
+      Duration(hours: widget.utcOffset),
+    );
+    final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
-    // 3. Find the active record at the very start of this day
+    // 3. Find the active record at the very start of this local day
     ActivityRecord? lastRec;
-    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
     if (startIdx != -1) {
       lastRec = allFlat[startIdx].rec;
     }
 
-    DateTime currentDayPtr = displayStart;
+    DateTime currentDayPtr = windowStart;
 
     void addLogItem(ActivityRecord rec, DateTime start, DateTime end) {
       final durationMinutes = end.difference(start).inMinutes;
@@ -1288,9 +1303,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // Skip gaps (no card and no crew manual entry)
       if (rec.card == 0 && rec.crew == 0) return;
 
-      // Minutes from start of the day for the _activityLogItem helper
-      final startOffset = start.difference(displayStart).inMinutes;
-      final endOffset = end.difference(displayStart).inMinutes;
+      // Minutes from start of the local day for the _activityLogItem helper
+      final startOffset = start.difference(windowStart).inMinutes;
+      final endOffset = end.difference(windowStart).inMinutes;
 
       items.add(
         _activityLogItem(
@@ -1305,10 +1320,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       );
     }
 
-    // 4. Iterate through activities
+    // 4. Iterate through activities within the local window
     for (var entry in allFlat) {
-      if (entry.time.isAfter(displayEnd)) break;
-      if (entry.time.isAfter(displayStart)) {
+      if (entry.time.isAfter(windowEnd)) break;
+      if (entry.time.isAfter(windowStart)) {
         if (lastRec != null) {
           addLogItem(lastRec, currentDayPtr, entry.time);
         }
@@ -1317,9 +1332,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
     }
 
-    // 5. Final segment to 24:00
-    if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
-      addLogItem(lastRec, currentDayPtr, displayEnd);
+    // 5. Final segment to end of local day
+    if (lastRec != null && currentDayPtr.isBefore(windowEnd)) {
+      addLogItem(lastRec, currentDayPtr, windowEnd);
     }
 
     return items;
@@ -1366,15 +1381,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
 
     String formatTime(int totalMinutes) {
-      int h = ((totalMinutes ~/ 60) % 24);
-      if (h < 0) h += 24;
+      int h = (totalMinutes ~/ 60);
       int m = totalMinutes % 60;
-      if (m < 0) m += 60;
       return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
     }
 
-    final startStr = formatTime(start + widget.utcOffset * 60);
-    final endStr = formatTime(end + widget.utcOffset * 60);
+    final startStr = formatTime(start);
+    final endStr = formatTime(end);
     final durStr =
         "${(duration ~/ 60).toString().padLeft(2, '0')}:${(duration % 60).toString().padLeft(2, '0')}";
 
@@ -1541,13 +1554,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 2. Define the display boundaries for this specific day (Local 00:00 to 24:00)
-    final DateTime displayStart = day.header.time;
-    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+    // 2. Define the window boundaries in UTC based on the local offset
+    // Local 00:00 is (day.header.time - utcOffset)
+    final DateTime windowStart = day.header.time.subtract(
+      Duration(hours: widget.utcOffset),
+    );
+    final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
-    // 3. Find the active record at the very start of this day (from previous days)
+    // 3. Find the active record at the very start of this local day
     ActivityRecord? lastRec;
-    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
     if (startIdx != -1) {
       lastRec = allFlat[startIdx].rec;
     }
@@ -1618,7 +1634,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               if (regularDuration > 0) {
                 widgets.add(
                   _buildActivityBlock(
-                    startH + widget.utcOffset,
+                    startH,
                     regularDuration,
                     Colors.blue,
                     rec.slot,
@@ -1628,7 +1644,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               double overdriveDuration = (accumulatedDriving - 270) / 60.0;
               widgets.add(
                 _buildActivityBlock(
-                  startH + widget.utcOffset + max(0, regularDuration),
+                  startH + max(0, regularDuration),
                   overdriveDuration,
                   Colors.red,
                   rec.slot,
@@ -1650,19 +1666,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       if (color != Colors.transparent) {
         widgets.add(
-          _buildActivityBlock(
-            startH + widget.utcOffset,
-            endH - startH,
-            color,
-            rec.slot,
-          ),
+          _buildActivityBlock(startH, endH - startH, color, rec.slot),
         );
       }
 
       if (rec.crew == 1) {
-        widgets.add(
-          _buildCrewLine(startH + widget.utcOffset, endH - startH, rec.slot),
-        );
+        widgets.add(_buildCrewLine(startH, endH - startH, rec.slot));
       }
     }
 
@@ -1671,12 +1680,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       // No initial session line
     }
 
-    // 6. Iterate through all activities and process those that fall within the day
+    // 6. Iterate through all activities and process those that fall within the local window
     for (var entry in allFlat) {
-      if (entry.time.isAfter(displayEnd)) break;
-      if (entry.time.isAfter(displayStart)) {
+      if (entry.time.isAfter(windowEnd)) break;
+      if (entry.time.isAfter(windowStart)) {
         double entryHour =
-            entry.time.difference(displayStart).inSeconds / 3600.0;
+            entry.time.difference(windowStart).inSeconds / 3600.0;
 
         if (lastRec != null) {
           processSegment(lastRec, currentHour, entryHour);
@@ -1687,7 +1696,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
     }
 
-    // 7. Final segment to 24:00
+    // 7. Final segment to 24:00 (end of local day)
     if (lastRec != null && currentHour < 24.0) {
       processSegment(lastRec, currentHour, 24.0);
     }

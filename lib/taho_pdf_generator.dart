@@ -458,22 +458,22 @@ class TachoPdfGenerator {
                               return b.rec.slot.compareTo(a.rec.slot);
                             });
 
-                            final DateTime displayStart = day.header.time;
-                            final DateTime displayEnd = displayStart.add(const Duration(minutes: 27 * 60));
+                            final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
+                            final DateTime windowEnd = windowStart.add(const Duration(minutes: 27 * 60));
 
                             ActivityRecord? lastRec;
-                            int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+                            int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
                             if (startIdx != -1) {
                               lastRec = allFlat[startIdx].rec;
                             }
 
-                            DateTime currentDayPtr = displayStart;
+                            DateTime currentDayPtr = windowStart;
                             int accumulatedDriving = 0;
                             bool hasFirstBreakPart = false;
 
                             void processSegment(ActivityRecord rec, DateTime start, DateTime end) {
-                              final int localStart = start.difference(displayStart).inMinutes;
-                              final int localEnd = end.difference(displayStart).inMinutes;
+                              final int localStart = start.difference(windowStart).inMinutes;
+                              final int localEnd = end.difference(windowStart).inMinutes;
                               final int clipStart = localStart.clamp(0, timelineMinutes);
                               final int clipEnd = localEnd.clamp(0, timelineMinutes);
                               if (clipEnd <= clipStart) return;
@@ -525,8 +525,8 @@ class TachoPdfGenerator {
                             }
 
                             for (var entry in allFlat) {
-                              if (entry.time.isAfter(displayEnd)) break;
-                              if (entry.time.isAfter(displayStart)) {
+                              if (entry.time.isAfter(windowEnd)) break;
+                              if (entry.time.isAfter(windowStart)) {
                                 if (lastRec != null) {
                                   processSegment(lastRec, currentDayPtr, entry.time);
                                 }
@@ -534,8 +534,8 @@ class TachoPdfGenerator {
                                 lastRec = entry.rec;
                               }
                             }
-                            if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
-                              processSegment(lastRec, currentDayPtr, displayEnd);
+                            if (lastRec != null && currentDayPtr.isBefore(windowEnd)) {
+                              processSegment(lastRec, currentDayPtr, windowEnd);
                             }
 
                             // --- DRAW COUNTRIES (PLACES) ---
@@ -553,8 +553,9 @@ class TachoPdfGenerator {
                                         place.entryTime.minute +
                                         utcOffset * 60;
 
-                                if (placeMinutes >= 0 &&
-                                    placeMinutes <= timelineMinutes) {
+                                // Note: This still assumes places fall within 0-27h relative to UTC 00:00.
+                                // If we want true consistency, places should also be relative to windowStart.
+                                // However, keeping this for now as it matches current display logic.
                                   final double py =
                                       axisBottom - placeMinutes * minuteHeight;
                                   final double px =
@@ -614,7 +615,6 @@ class TachoPdfGenerator {
                                   );
                                 }
                               }
-                            }
 
                             for (
                               int totalM = 0;
@@ -847,18 +847,18 @@ class TachoPdfGenerator {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 2. Define the display boundaries for this specific day (Local 00:00 to 24:00)
-    final DateTime displayStart = day.header.time;
-    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+    // 2. Define the window boundaries in UTC based on the local offset
+    final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
+    final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
     // 3. Find the active record at the very start of this day
     ActivityRecord? lastRec;
-    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
     if (startIdx != -1) {
       lastRec = allFlat[startIdx].rec;
     }
 
-    DateTime currentDayPtr = displayStart;
+    DateTime currentDayPtr = windowStart;
 
     void addRow(ActivityRecord rec, DateTime start, DateTime end) {
       final duration = end.difference(start).inMinutes;
@@ -867,8 +867,8 @@ class TachoPdfGenerator {
       // Skip gaps (no card and no crew manual entry)
       if (rec.card == 0 && rec.crew == 0) return;
 
-      final startOffset = start.difference(displayStart).inMinutes;
-      final endOffset = end.difference(displayStart).inMinutes;
+      final startOffset = start.difference(windowStart).inMinutes;
+      final endOffset = end.difference(windowStart).inMinutes;
 
       String label = _getActivityName(rec.activity);
       if (rec.crew == 1) label += " (Crew)";
@@ -885,14 +885,14 @@ class TachoPdfGenerator {
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
                     pw.Text(
-                      formatPdfTime(startOffset, utcOffset),
+                      formatPdfTime(startOffset),
                       style: pw.TextStyle(
                         fontSize: 9,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                     pw.Text(
-                      formatPdfTime(endOffset, utcOffset),
+                      formatPdfTime(endOffset),
                       style: pw.TextStyle(
                         fontSize: 7,
                         color: PdfColors.grey600,
@@ -944,10 +944,10 @@ class TachoPdfGenerator {
       );
     }
 
-    // 4. Iterate through activities
+    // 4. Iterate through activities within the local window
     for (var entry in allFlat) {
-      if (entry.time.isAfter(displayEnd)) break;
-      if (entry.time.isAfter(displayStart)) {
+      if (entry.time.isAfter(windowEnd)) break;
+      if (entry.time.isAfter(windowStart)) {
         if (lastRec != null) {
           addRow(lastRec, currentDayPtr, entry.time);
         }
@@ -956,9 +956,9 @@ class TachoPdfGenerator {
       }
     }
 
-    // 5. Final segment to 24:00
-    if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
-      addRow(lastRec, currentDayPtr, displayEnd);
+    // 5. Final segment to end of local day
+    if (lastRec != null && currentDayPtr.isBefore(windowEnd)) {
+      addRow(lastRec, currentDayPtr, windowEnd);
     }
 
     if (rows.isEmpty) return pw.Text("No activities recorded");
@@ -1199,11 +1199,9 @@ class TachoPdfGenerator {
     }
   }
 
-  static String formatPdfTime(int minutes, int utcOffset) {
-    int h = ((minutes + utcOffset * 60) ~/ 60) % 24;
-    if (h < 0) h += 24;
-    int m = (minutes + utcOffset * 60) % 60;
-    if (m < 0) m += 60;
+  static String formatPdfTime(int minutes) {
+    int h = (minutes ~/ 60);
+    int m = minutes % 60;
     return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
   }
 
@@ -1235,18 +1233,18 @@ class TachoPdfGenerator {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 2. Day boundaries
-    final DateTime displayStart = day.header.time;
-    final DateTime displayEnd = displayStart.add(const Duration(days: 1));
+    // 2. Define the window boundaries in UTC based on the local offset
+    final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
+    final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
     // 3. Find starting record
     ActivityRecord? lastRec;
-    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(displayStart));
+    int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
     if (startIdx != -1) {
       lastRec = allFlat[startIdx].rec;
     }
 
-    DateTime currentDayPtr = displayStart;
+    DateTime currentDayPtr = windowStart;
 
     void process(ActivityRecord rec, DateTime start, DateTime end) {
       final duration = end.difference(start).inMinutes;
@@ -1268,10 +1266,10 @@ class TachoPdfGenerator {
       }
     }
 
-    // 4. Iterate
+    // 4. Iterate through activities within the local window
     for (var entry in allFlat) {
-      if (entry.time.isAfter(displayEnd)) break;
-      if (entry.time.isAfter(displayStart)) {
+      if (entry.time.isAfter(windowEnd)) break;
+      if (entry.time.isAfter(windowStart)) {
         if (lastRec != null) {
           process(lastRec, currentDayPtr, entry.time);
         }
@@ -1280,9 +1278,9 @@ class TachoPdfGenerator {
       }
     }
 
-    // 5. Final
-    if (lastRec != null && currentDayPtr.isBefore(displayEnd)) {
-      process(lastRec, currentDayPtr, displayEnd);
+    // 5. Final segment to end of local day
+    if (lastRec != null && currentDayPtr.isBefore(windowEnd)) {
+      process(lastRec, currentDayPtr, windowEnd);
     }
 
     return summary;
