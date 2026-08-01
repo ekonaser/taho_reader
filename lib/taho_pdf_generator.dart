@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/material.dart' show Color;
 import 'package:pdf/pdf.dart';
@@ -196,6 +197,7 @@ class TachoPdfGenerator {
     bool openImmediately = false,
     bool share = false,
     required List<DailyActivities> allActivities,
+    Uint8List? timelineImageBytes,
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
@@ -327,6 +329,26 @@ class TachoPdfGenerator {
             pw.Divider(thickness: 1, color: pdfPrimaryGreen),
             pw.SizedBox(height: 10),
             _buildVerticalPdfTimeline(day, pdfPrimaryGreen, utcOffset, allActivities),
+            if (timelineImageBytes != null) ...[
+              pw.SizedBox(height: 20),
+              pw.Text(
+                "VISUAL TIMELINE",
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: pdfPrimaryGreen,
+                ),
+              ),
+              pw.Divider(thickness: 1, color: pdfPrimaryGreen),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                width: double.infinity,
+                child: pw.Image(
+                  pw.MemoryImage(timelineImageBytes),
+                  fit: pw.BoxFit.contain,
+                ),
+              ),
+            ],
             if (dayEvents.isNotEmpty) ...[
               pw.SizedBox(height: 20),
               _buildEventsSection(dayEvents, pdfPrimaryGreen),

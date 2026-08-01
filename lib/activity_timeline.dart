@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'taho_pdf_generator.dart';
 import 'event_model.dart';
@@ -1452,7 +1453,62 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  void _showExportOptions(DailyActivities day, Color primaryGreen) {
+  Future<Uint8List> _captureTimelineImage(DailyActivities day) async {
+    final theme = Theme.of(context);
+    final primaryGreen = theme.primaryColor;
+
+    // Force light color scheme for PDF export
+    final pdfColorScheme = ColorScheme.fromSeed(
+      seedColor: primaryGreen,
+      brightness: Brightness.light,
+    );
+
+    // Target a high width for PDF clarity (e.g. 2400px for 24h)
+    const double targetHourWidth = 100.0;
+    const double targetWidth = targetHourWidth * 24.0;
+    const double targetHeight = 160.0;
+
+    final renderData = _buildTimelineRenderData(
+      day: day,
+      primaryGreen: primaryGreen,
+      colorScheme: pdfColorScheme,
+      hourWidth: targetHourWidth,
+    );
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, targetWidth, targetHeight),
+    );
+
+    // Background
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, targetWidth, targetHeight),
+      Paint()..color = Colors.white,
+    );
+
+    _paintTimeline(
+      canvas: canvas,
+      size: Size(targetWidth, targetHeight),
+      hourWidth: targetHourWidth,
+      contentStartX: 0.0,
+      colorScheme: pdfColorScheme,
+      primaryGreen: primaryGreen,
+      renderData: renderData,
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(targetWidth.toInt(), targetHeight.toInt());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  void _showExportOptions(DailyActivities day, Color primaryGreen) async {
+    // Capture the timeline image first
+    final bytes = await _captureTimelineImage(day);
+
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -1478,6 +1534,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   under50km: widget.under50km,
                   share: true,
                   allActivities: widget.activities,
+                  timelineImageBytes: bytes,
                 );
               },
             ),
@@ -1500,6 +1557,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   under50km: widget.under50km,
                   openImmediately: true,
                   allActivities: widget.activities,
+                  timelineImageBytes: bytes,
                 );
               },
             ),
@@ -1521,6 +1579,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   utcOffset: widget.utcOffset,
                   under50km: widget.under50km,
                   allActivities: widget.activities,
+                  timelineImageBytes: bytes,
                 );
               },
             ),
