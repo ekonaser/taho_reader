@@ -340,7 +340,7 @@ class TachoPdfGenerator {
 
     if (includeDetailedTimeline) {
       final title = "DETAILED ACTIVITY TIMELINE - $dateStr";
-      const int timelineMinutes = 27 * 60;
+      const int timelineMinutes = 24 * 60;
       const double minuteHeight = 8.0;
       const double timelineLabelPadding = 20;
       final double timelineHeight = timelineMinutes * minuteHeight;
@@ -381,7 +381,7 @@ class TachoPdfGenerator {
                       ],
                     ),
                     pw.Text(
-                      "27h timeline",
+                      "24h timeline",
                       style: const pw.TextStyle(
                         fontSize: 10,
                         color: PdfColors.grey,
@@ -459,7 +459,7 @@ class TachoPdfGenerator {
                             });
 
                             final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
-                            final DateTime windowEnd = windowStart.add(const Duration(minutes: 27 * 60));
+                            final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
                             ActivityRecord? lastRec;
                             int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
@@ -544,28 +544,19 @@ class TachoPdfGenerator {
                             allPlacesForDay.addAll(placesG2);
 
                             for (var place in allPlacesForDay) {
-                              final pDate = place.entryTime.toLocal();
-                              if (pDate.year == day.date.year &&
-                                  pDate.month == day.date.month &&
-                                  pDate.day == day.date.day) {
-                                final int placeMinutes =
-                                    place.entryTime.hour * 60 +
-                                        place.entryTime.minute +
-                                        utcOffset * 60;
+                              if (place.entryTime.isAfter(windowStart) && place.entryTime.isBefore(windowEnd)) {
+                                final int placeMinutes = place.entryTime.difference(windowStart).inMinutes;
 
-                                // Note: This still assumes places fall within 0-27h relative to UTC 00:00.
-                                // If we want true consistency, places should also be relative to windowStart.
-                                // However, keeping this for now as it matches current display logic.
-                                  final double py =
-                                      axisBottom - placeMinutes * minuteHeight;
-                                  final double px =
-                                      slot2X + slotBlockWidth + 12;
+                                final double py =
+                                    axisBottom - placeMinutes * minuteHeight;
+                                final double px =
+                                    slot2X + slotBlockWidth + 12;
 
-                                  final String country = _getCountryCode(
-                                    place.dailyWorkPeriodCountry,
-                                  );
-                                  final bool isStart =
-                                      place.entryTypeDailyWorkPeriod == 0;
+                                final String country = _getCountryCode(
+                                  place.dailyWorkPeriodCountry,
+                                );
+                                final bool isStart =
+                                    place.entryTypeDailyWorkPeriod == 0;
 
                                   canvas.setFillColor(
                                     isStart ? PdfColors.green : PdfColors.orange,
@@ -673,12 +664,12 @@ class TachoPdfGenerator {
                           ],
                         ),
                       ),
-                      ...List.generate(28, (index) {
+                      ...List.generate(25, (index) {
                         final int totalMinutes = index * 60;
                         final int labelHour = index % 24;
                         final double topOffset =
                             timelineLabelPadding +
-                            totalMinutes * minuteHeight -
+                            (24 * 60 - totalMinutes) * minuteHeight -
                             6;
                         return pw.Positioned(
                           left: 0,

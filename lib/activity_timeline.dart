@@ -6,6 +6,287 @@ import 'dart:math';
 import 'taho_pdf_generator.dart';
 import 'event_model.dart';
 
+class _TimelineBlock {
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final Color color;
+  final bool isCrewLine;
+
+  const _TimelineBlock({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.color,
+    this.isCrewLine = false,
+  });
+}
+
+class _TimelinePlaceMarker {
+  final double left;
+  final double top;
+  final String country;
+  final Color color;
+  final int type;
+
+  const _TimelinePlaceMarker({
+    required this.left,
+    required this.top,
+    required this.country,
+    required this.color,
+    required this.type,
+  });
+}
+
+class _TimelineEventMarker {
+  final double left;
+  final double top;
+  final Color color;
+
+  const _TimelineEventMarker({
+    required this.left,
+    required this.top,
+    required this.color,
+  });
+}
+
+class _TimelineMinuteMarker {
+  final double left;
+  final bool showLabel;
+  final String label;
+
+  const _TimelineMinuteMarker({
+    required this.left,
+    required this.showLabel,
+    required this.label,
+  });
+}
+
+class _TimelineRenderData {
+  final ActivitySummary summary;
+  final List<_TimelineBlock> blocks;
+  final List<_TimelineBlock> crewLines;
+  final List<_TimelinePlaceMarker> placeMarkers;
+  final List<_TimelineEventMarker> eventMarkers;
+  final List<_TimelineMinuteMarker> minuteMarkers;
+  final double separatorY;
+  final double slot2LabelY;
+  final double slot1LabelY;
+
+  const _TimelineRenderData({
+    required this.summary,
+    required this.blocks,
+    required this.crewLines,
+    required this.placeMarkers,
+    required this.eventMarkers,
+    required this.minuteMarkers,
+    required this.separatorY,
+    required this.slot2LabelY,
+    required this.slot1LabelY,
+  });
+}
+
+class _TimelinePainter extends CustomPainter {
+  final double hourWidth;
+  final double contentStartX;
+  final ColorScheme colorScheme;
+  final Color primaryGreen;
+  final _TimelineRenderData renderData;
+
+  _TimelinePainter({
+    required this.hourWidth,
+    required this.contentStartX,
+    required this.colorScheme,
+    required this.primaryGreen,
+    required this.renderData,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = colorScheme.outlineVariant.withValues(alpha: 0.5)
+      ..strokeWidth = 1;
+    final minutePaint = Paint()
+      ..color = colorScheme.onSurfaceVariant.withValues(alpha: 0.15)
+      ..strokeWidth = 0.5;
+    final separatorPaint = Paint()
+      ..color = colorScheme.outlineVariant.withValues(alpha: 0.3)
+      ..strokeWidth = 1;
+
+    for (int h = 0; h <= 24; h++) {
+      final x = contentStartX + h * hourWidth;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+
+      if (h < 24) {
+        final labelPainter = TextPainter(
+          text: TextSpan(
+            text: '${(h % 24).toString().padLeft(2, '0')}:00',
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        labelPainter.paint(canvas, Offset(x + 4, size.height - 24));
+      }
+    }
+
+    for (final marker in renderData.minuteMarkers) {
+      canvas.drawLine(
+        Offset(contentStartX + marker.left, 0),
+        Offset(contentStartX + marker.left, size.height),
+        minutePaint,
+      );
+      if (marker.showLabel) {
+        final labelPainter = TextPainter(
+          text: TextSpan(
+            text: marker.label,
+            style: TextStyle(
+              fontSize: 8,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        labelPainter.paint(
+          canvas,
+          Offset(contentStartX + marker.left + 2, size.height - 24),
+        );
+      }
+    }
+
+    for (final block in renderData.blocks) {
+      final rect = Rect.fromLTWH(
+        block.left,
+        block.top,
+        block.width,
+        block.height,
+      );
+      final borderPaint = Paint()
+        ..color = Colors.black12
+        ..strokeWidth = 0.5
+        ..style = PaintingStyle.stroke;
+      final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+        fillPaint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
+        borderPaint,
+      );
+    }
+
+    for (final line in renderData.crewLines) {
+      canvas.drawRect(
+        Rect.fromLTWH(line.left, line.top, line.width, line.height),
+        Paint()..color = Colors.indigo,
+      );
+    }
+
+    canvas.drawLine(
+      Offset(contentStartX, renderData.separatorY),
+      Offset(contentStartX + (24 * hourWidth), renderData.separatorY),
+      separatorPaint,
+    );
+
+    final slotLabelStyle = TextStyle(
+      fontSize: 7,
+      color: colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.bold,
+    );
+    final slot2Painter = TextPainter(
+      text: TextSpan(text: 'SLOT 2', style: slotLabelStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final slot1Painter = TextPainter(
+      text: TextSpan(text: 'SLOT 1', style: slotLabelStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    canvas.save();
+    canvas.translate(8, renderData.slot2LabelY + 16);
+    canvas.rotate(-pi / 2);
+    slot2Painter.paint(canvas, Offset.zero);
+    canvas.restore();
+
+    canvas.save();
+    canvas.translate(8, renderData.slot1LabelY + 16);
+    canvas.rotate(-pi / 2);
+    slot1Painter.paint(canvas, Offset.zero);
+    canvas.restore();
+
+    for (final marker in renderData.placeMarkers) {
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: marker.country,
+          style: TextStyle(
+            fontSize: 7,
+            fontWeight: FontWeight.bold,
+            color: marker.color,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(canvas, Offset(marker.left - 4, marker.top - 14));
+
+      final iconPainter = marker.type == 0
+          ? TahoInsertionPainter(color: marker.color)
+          : TahoWithdrawalPainter(color: marker.color);
+      canvas.save();
+      canvas.translate(marker.left - 4, marker.top);
+      iconPainter.paint(canvas, const Size(8, 12));
+      canvas.restore();
+    }
+
+    for (final marker in renderData.eventMarkers) {
+      canvas.drawLine(
+        Offset(marker.left, 120),
+        Offset(marker.left, 130),
+        Paint()
+          ..color = marker.color.withValues(alpha: 0.5)
+          ..strokeWidth = 2,
+      );
+      final iconPainter = IconPainter(color: marker.color);
+      canvas.save();
+      canvas.translate(marker.left - 10, 130);
+      iconPainter.paint(canvas, const Size(20, 20));
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelinePainter oldDelegate) {
+    return oldDelegate.hourWidth != hourWidth ||
+        oldDelegate.contentStartX != contentStartX ||
+        oldDelegate.colorScheme != colorScheme ||
+        oldDelegate.primaryGreen != primaryGreen ||
+        oldDelegate.renderData != renderData;
+  }
+}
+
+class IconPainter extends CustomPainter {
+  final Color color;
+  const IconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width * 0.35,
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class ActivityTimeline extends StatefulWidget {
   final List<DailyActivities> activities;
   final CardId? cardId;
@@ -87,7 +368,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
-    final double totalWidth = _hourWidth * 27;
+    final double totalWidth = _hourWidth * 24;
 
     final bool isSmallScreen = MediaQuery.sizeOf(context).width < 360;
     final double labelFontSize = isSmallScreen ? 10 : 14;
@@ -195,7 +476,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
-    final double totalWidth = _hourWidth * 27;
+    final double totalWidth = _hourWidth * 24;
 
     return SingleChildScrollView(
       child: Column(
@@ -354,71 +635,37 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       _initialPinchDistance = 0;
                     }
                   },
-                  child: Container(
-                    width: totalWidth + 80,
-                    height: 200,
-                    color: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: List.generate(
-                            27,
-                            (h) => Container(
-                              width: _hourWidth,
-                              height: double.infinity,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(
-                                    color: colorScheme.outlineVariant
-                                        .withValues(alpha: 0.5),
-                                    width: 1,
-                                  ),
-                                ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  ..._buildMinuteMarkers(h),
-                                  Align(
-                                    alignment: Alignment.bottomLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 4,
-                                        bottom: 8,
-                                      ),
-                                      child: Text(
-                                        "${(h % 24).toString().padLeft(2, '0')}:00",
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: colorScheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                  child: Builder(
+                    builder: (context) {
+                      final renderData = _buildTimelineRenderData(
+                        day,
+                        primaryGreen,
+                        colorScheme,
+                      );
+                      _summary.reset();
+                      _summary.rest = renderData.summary.rest;
+                      _summary.availability = renderData.summary.availability;
+                      _summary.work = renderData.summary.work;
+                      _summary.driving = renderData.summary.driving;
+                      _summary.overdrive = renderData.summary.overdrive;
+                      _summary.totalKm = renderData.summary.totalKm;
+
+                      return Container(
+                        width: totalWidth + 80,
+                        height: 200,
+                        color: Colors.transparent,
+                        child: CustomPaint(
+                          size: Size(totalWidth + 80, 200),
+                          painter: _TimelinePainter(
+                            hourWidth: _hourWidth,
+                            contentStartX: 40,
+                            colorScheme: colorScheme,
+                            primaryGreen: primaryGreen,
+                            renderData: renderData,
                           ),
                         ),
-                        Positioned(
-                          top: 40,
-                          left: 0,
-                          right: 0,
-                          height: 80,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              ..._buildRecursiveTimeline(day, primaryGreen),
-                              ..._buildPlaceMarkers(day),
-                              ..._buildEventMarkers(day),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1527,16 +1774,18 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  // Natančen prevod C++ metode DrawOneDay(BYTE* ptr, int counter, ActivityData& pData)
-  List<Widget> _buildRecursiveTimeline(
+  _TimelineRenderData _buildTimelineRenderData(
     DailyActivities day,
     Color primaryGreen,
+    ColorScheme colorScheme,
   ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    List<Widget> widgets = [];
-    _summary.reset();
+    final summary = ActivitySummary();
+    final blocks = <_TimelineBlock>[];
+    final crewLines = <_TimelineBlock>[];
+    final placeMarkers = <_TimelinePlaceMarker>[];
+    final eventMarkers = <_TimelineEventMarker>[];
+    final minuteMarkers = <_TimelineMinuteMarker>[];
 
-    // 1. Flatten all activities from all days for context
     List<({DateTime time, ActivityRecord rec})> allFlat = [];
     for (var d in widget.activities) {
       for (var act in d.activities) {
@@ -1554,21 +1803,17 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       return b.rec.slot.compareTo(a.rec.slot);
     });
 
-    // 2. Define the window boundaries in UTC based on the local offset
-    // Local 00:00 is (day.header.time - utcOffset)
     final DateTime windowStart = day.header.time.subtract(
       Duration(hours: widget.utcOffset),
     );
     final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
-    // 3. Find the active record at the very start of this local day
     ActivityRecord? lastRec;
     int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
     if (startIdx != -1) {
       lastRec = allFlat[startIdx].rec;
     }
 
-    // 4. Processing state
     int accumulatedDriving = 0;
     bool hasFirstBreakPart = false;
     double currentHour = 0.0;
@@ -1576,7 +1821,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     void processSegment(ActivityRecord rec, double startH, double endH) {
       if (endH <= startH) return;
 
-      // Gap logic: card == 0 and crew == 0 means transparent gap
       if (rec.card == 0 && rec.crew == 0) {
         accumulatedDriving = 0;
         hasFirstBreakPart = false;
@@ -1588,9 +1832,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       Color color;
       switch (rec.activity) {
-        case 0: // Rest
+        case 0:
           color = primaryGreen;
-          _summary.rest += durationMinutes;
+          summary.rest += durationMinutes;
           if (!widget.under50km) {
             if (durationMinutes >= 45) {
               accumulatedDriving = 0;
@@ -1603,9 +1847,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             }
           }
           break;
-        case 1: // Availability
+        case 1:
           color = Colors.grey;
-          _summary.availability += durationMinutes;
+          summary.availability += durationMinutes;
           if (!widget.under50km) {
             if (durationMinutes >= 45) {
               accumulatedDriving = 0;
@@ -1618,36 +1862,38 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             }
           }
           break;
-        case 2: // Work
+        case 2:
           color = Colors.orange;
-          _summary.work += durationMinutes;
+          summary.work += durationMinutes;
           break;
-        case 3: // Driving
+        case 3:
           color = Colors.blue;
-          _summary.driving += durationMinutes;
+          summary.driving += durationMinutes;
           if (!widget.under50km) {
             accumulatedDriving += durationMinutes;
             if (accumulatedDriving > 270) {
-              _summary.overdrive += (accumulatedDriving - 270);
-              double regularDuration =
+              summary.overdrive += (accumulatedDriving - 270);
+              final regularDuration =
                   (270 - (accumulatedDriving - durationMinutes)) / 60.0;
               if (regularDuration > 0) {
-                widgets.add(
-                  _buildActivityBlock(
-                    startH,
-                    regularDuration,
-                    Colors.blue,
-                    rec.slot,
+                blocks.add(
+                  _TimelineBlock(
+                    left: 40 + startH * _hourWidth,
+                    top: rec.slot == 1 ? 45 : 83,
+                    width: max(2.0, regularDuration * _hourWidth),
+                    height: 32,
+                    color: Colors.blue,
                   ),
                 );
               }
-              double overdriveDuration = (accumulatedDriving - 270) / 60.0;
-              widgets.add(
-                _buildActivityBlock(
-                  startH + max(0, regularDuration),
-                  overdriveDuration,
-                  Colors.red,
-                  rec.slot,
+              final overdriveDuration = (accumulatedDriving - 270) / 60.0;
+              blocks.add(
+                _TimelineBlock(
+                  left: 40 + (startH + max(0, regularDuration)) * _hourWidth,
+                  top: rec.slot == 1 ? 45 : 83,
+                  width: max(2.0, overdriveDuration * _hourWidth),
+                  height: 32,
+                  color: Colors.red,
                 ),
               );
               accumulatedDriving = 270;
@@ -1655,8 +1901,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             } else {
               color = Colors.blue;
             }
-          } else {
-            color = Colors.blue;
           }
           break;
         default:
@@ -1665,27 +1909,35 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
 
       if (color != Colors.transparent) {
-        widgets.add(
-          _buildActivityBlock(startH, endH - startH, color, rec.slot),
+        blocks.add(
+          _TimelineBlock(
+            left: 40 + startH * _hourWidth,
+            top: rec.slot == 1 ? 45 : 83,
+            width: max(2.0, (endH - startH) * _hourWidth),
+            height: 32,
+            color: color,
+          ),
         );
       }
 
       if (rec.crew == 1) {
-        widgets.add(_buildCrewLine(startH, endH - startH, rec.slot));
+        crewLines.add(
+          _TimelineBlock(
+            left: 40 + startH * _hourWidth,
+            top: rec.slot == 1 ? 75 : 113,
+            width: max(2.0, (endH - startH) * _hourWidth),
+            height: 2,
+            color: Colors.indigo,
+            isCrewLine: true,
+          ),
+        );
       }
     }
 
-    // 5. Draw segments
-    if (lastRec != null) {
-      // No initial session line
-    }
-
-    // 6. Iterate through all activities and process those that fall within the local window
     for (var entry in allFlat) {
       if (entry.time.isAfter(windowEnd)) break;
       if (entry.time.isAfter(windowStart)) {
-        double entryHour =
-            entry.time.difference(windowStart).inSeconds / 3600.0;
+        final entryHour = entry.time.difference(windowStart).inSeconds / 3600.0;
 
         if (lastRec != null) {
           processSegment(lastRec, currentHour, entryHour);
@@ -1696,141 +1948,77 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
     }
 
-    // 7. Final segment to 24:00 (end of local day)
     if (lastRec != null && currentHour < 24.0) {
       processSegment(lastRec, currentHour, 24.0);
     }
 
-    // 8. UI Decoration (Labels and Separator)
-    widgets.add(
-      Positioned(
-        left: -38,
-        top: 5,
-        height: 32,
-        child: Center(
-          child: RotatedBox(
-            quarterTurns: 3,
-            child: Text(
-              "SLOT 2",
-              style: TextStyle(
-                fontSize: 7,
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    widgets.add(
-      Positioned(
-        left: -38,
-        top: 43,
-        height: 32,
-        child: Center(
-          child: RotatedBox(
-            quarterTurns: 3,
-            child: Text(
-              "SLOT 1",
-              style: TextStyle(
-                fontSize: 7,
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    widgets.add(
-      Positioned(
-        left: 0,
-        right: 0,
-        top: 39.5,
-        child: Container(
-          height: 1,
-          color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
-    );
+    int interval;
+    if (_hourWidth > 420) {
+      interval = 5;
+    } else if (_hourWidth > 250) {
+      interval = 15;
+    } else if (_hourWidth > 120) {
+      interval = 30;
+    } else {
+      interval = 0;
+    }
 
-    return widgets;
-  }
-
-  List<Widget> _buildPlaceMarkers(DailyActivities day) {
-    List<Widget> markers = [];
-    final targetDate = day.date.toLocal();
-
-    // Gen 1 Places
-    for (var place in widget.places) {
-      final pDate = place.entryTime.toLocal();
-      if (pDate.year == targetDate.year &&
-          pDate.month == targetDate.month &&
-          pDate.day == targetDate.day) {
-        markers.add(
-          _buildPlaceMarker(
-            place.entryTime,
-            place.entryTypeDailyWorkPeriod,
-            place.dailyWorkPeriodCountry,
+    if (interval > 0) {
+      for (int m = interval; m < 60; m += interval) {
+        minuteMarkers.add(
+          _TimelineMinuteMarker(
+            left: (m / 60.0) * _hourWidth,
+            showLabel: _hourWidth > 220 && (m % 15 == 0),
+            label: m.toString().padLeft(2, '0'),
           ),
         );
       }
     }
 
-    // Gen 2 Places
-    for (var place in widget.placesG2) {
-      final pDate = place.entryTime.toLocal();
-      if (pDate.year == targetDate.year &&
-          pDate.month == targetDate.month &&
-          pDate.day == targetDate.day) {
-        markers.add(
-          _buildPlaceMarker(
-            place.entryTime,
-            place.entryTypeDailyWorkPeriod,
-            place.dailyWorkPeriodCountry,
+    final List<dynamic> allPlaces = [];
+    allPlaces.addAll(widget.places);
+    allPlaces.addAll(widget.placesG2);
+
+    for (var place in allPlaces) {
+      if (place.entryTime.isAfter(windowStart) && place.entryTime.isBefore(windowEnd)) {
+        final hour = place.entryTime.difference(windowStart).inSeconds / 3600.0;
+        placeMarkers.add(
+          _TimelinePlaceMarker(
+            left: 40 + hour * _hourWidth - 4.0,
+            top: 0,
+            country: _getCountryCode(place.dailyWorkPeriodCountry),
+            color: place.entryTypeDailyWorkPeriod == 0
+                ? Colors.green
+                : Colors.orange,
+            type: place.entryTypeDailyWorkPeriod,
           ),
         );
       }
     }
-
-    return markers;
-  }
-
-  List<Widget> _buildEventMarkers(DailyActivities day) {
-    List<Widget> markers = [];
-    final targetDate = day.date.toLocal();
 
     for (var event in widget.driverEvents) {
-      final eDate = event.date.toLocal();
-      if (eDate.year == targetDate.year &&
-          eDate.month == targetDate.month &&
-          eDate.day == targetDate.day) {
-        markers.add(_buildEventMarker(event));
+      if (event.date.isAfter(windowStart) && event.date.isBefore(windowEnd)) {
+        final hour = event.date.difference(windowStart).inSeconds / 3600.0;
+        eventMarkers.add(
+          _TimelineEventMarker(
+            left: 40 + hour * _hourWidth,
+            top: 125,
+            color: _getEventColor(event.type),
+          ),
+        );
       }
     }
 
-    return markers;
-  }
-
-  Widget _buildEventMarker(DriverEvent event) {
-    final double hour =
-        (event.date.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) %
-        86400 /
-        3600.0;
-    final color = _getEventColor(event.type);
-
-    return Positioned(
-      left: hour * _hourWidth - 10.0,
-      top: 85, // Prikaz pod časovnico
-      child: Tooltip(
-        message: "${event.type}: ${event.description}",
-        child: Column(
-          children: [
-            Container(width: 2, height: 10, color: color.withOpacity(0.5)),
-            Icon(Icons.event_note, size: 20, color: color),
-          ],
-        ),
-      ),
+    return _TimelineRenderData(
+      summary: summary,
+      blocks: blocks,
+      crewLines: crewLines,
+      placeMarkers: placeMarkers,
+      eventMarkers: eventMarkers,
+      minuteMarkers: minuteMarkers,
+      separatorY: 79.5,
+      slot2LabelY: 45,
+      slot1LabelY: 83,
     );
   }
 
@@ -2029,130 +2217,5 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         return "Unknown ($code)";
     }
     return "$name";
-  }
-
-  Widget _buildPlaceMarker(DateTime entryTime, int type, int countryCode) {
-    // type: 0 = start (insertion), 1 = end (withdrawal)
-    final double hour =
-        (entryTime.millisecondsSinceEpoch / 1000 + widget.utcOffset * 3600) %
-        86400 /
-        3600.0;
-
-    final String country = _getCountryCode(countryCode);
-
-    return Positioned(
-      left: hour * _hourWidth - 4.0, // Centrirano za širino 8px
-      top: -40, // Nižje in bližje časovnici
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            country,
-            style: TextStyle(
-              fontSize: 7, // Še manjša pisava
-              fontWeight: FontWeight.bold,
-              color: type == 0 ? Colors.green : Colors.orange,
-            ),
-          ),
-          const SizedBox(height: 1),
-          SizedBox(
-            width: 8,
-            height: 12,
-            child: CustomPaint(
-              painter: type == 0
-                  ? TahoInsertionPainter(color: Colors.green)
-                  : TahoWithdrawalPainter(color: Colors.orange),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityBlock(
-    double startHour,
-    double durationHours,
-    Color color,
-    int slot,
-  ) {
-    final double blockWidth = max(2.0, durationHours * _hourWidth);
-    // slot == 0 -> Driver (Bottom), slot == 1 -> Co-driver (Top)
-    final double top = slot == 1 ? 5 : 43;
-    const double height = 32;
-
-    return Positioned(
-      left: startHour * _hourWidth,
-      width: blockWidth,
-      top: top,
-      height: height,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.black12, width: 0.5),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCrewLine(double startHour, double durationHours, int slot) {
-    final double blockWidth = max(2.0, durationHours * _hourWidth);
-    final double top = slot == 1 ? 5 + 30 : 43 + 30;
-    return Positioned(
-      left: startHour * _hourWidth,
-      width: blockWidth,
-      top: top,
-      height: 2,
-      child: Container(color: Colors.indigo),
-    );
-  }
-
-  List<Widget> _buildMinuteMarkers(int hour) {
-    final colorScheme = Theme.of(context).colorScheme;
-    List<Widget> markers = [];
-    int interval;
-
-    if (_hourWidth > 420) {
-      interval = 5;
-    } else if (_hourWidth > 250) {
-      interval = 15;
-    } else if (_hourWidth > 120) {
-      interval = 30;
-    } else {
-      return markers;
-    }
-
-    for (int m = interval; m < 60; m += interval) {
-      double left = (m / 60.0) * _hourWidth;
-      markers.add(
-        Positioned(
-          left: left,
-          top: 0,
-          bottom: 0,
-          child: Container(
-            width: 0.5,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.15),
-          ),
-        ),
-      );
-
-      // Show text label (:15, :30, :45) only if there is enough space
-      if (_hourWidth > 220 && (m % 15 == 0)) {
-        markers.add(
-          Positioned(
-            left: left + 2,
-            bottom: 8,
-            child: Text(
-              m.toString().padLeft(2, '0'),
-              style: TextStyle(
-                fontSize: 8,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    return markers;
   }
 }
