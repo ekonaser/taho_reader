@@ -13,6 +13,7 @@ class _TimelineBlock {
   final double height;
   final Color color;
   final bool isCrewLine;
+  final int? durationMinutes;
 
   const _TimelineBlock({
     required this.left,
@@ -21,6 +22,7 @@ class _TimelineBlock {
     required this.height,
     required this.color,
     this.isCrewLine = false,
+    this.durationMinutes,
   });
 }
 
@@ -158,12 +160,35 @@ void _paintTimeline({
       block.width,
       block.height,
     );
-    final borderPaint = Paint()
-      ..color = Colors.black26
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
     final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
     canvas.drawRect(rect, fillPaint);
+
+    if (block.durationMinutes != null && block.width > 18) {
+      final int mins = block.durationMinutes!;
+      final String durationText = mins >= 60
+          ? "${mins ~/ 60}h ${mins % 60}m"
+          : "${mins}m";
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: durationText,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      if (textPainter.width < block.width - 4) {
+        final textOffset = Offset(
+          block.left + (block.width - textPainter.width) / 2,
+          block.top + (block.height - textPainter.height) / 2,
+        );
+        textPainter.paint(canvas, textOffset);
+      }
+    }
   }
 
   for (final line in renderData.crewLines) {
@@ -1958,6 +1983,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                     width: max(2.0, regularDuration * _hourWidth),
                     height: blockHeight,
                     color: Colors.blue,
+                    durationMinutes: (regularDuration * 60).round(),
                   ),
                 );
               }
@@ -1969,6 +1995,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   width: max(2.0, overdriveDuration * _hourWidth),
                   height: blockHeight,
                   color: Colors.red,
+                  durationMinutes: (overdriveDuration * 60).round(),
                 ),
               );
               accumulatedDriving = 270;
@@ -1991,6 +2018,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             width: max(2.0, (endH - startH) * _hourWidth),
             height: blockHeight,
             color: color,
+            durationMinutes: durationMinutes,
           ),
         );
       }
