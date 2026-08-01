@@ -403,8 +403,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   Size? _cachedTimelineSize;
   DateTime? _startDate;
   DateTime? _endDate;
-  bool _includeDetailedTimeline = false;
-
   bool _isManualZoom = false;
 
   @override
@@ -1457,96 +1455,76 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   void _showExportOptions(DailyActivities day, Color primaryGreen) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SwitchListTile(
-                secondary: Icon(Icons.timeline, color: primaryGreen),
-                title: const Text('Include Detailed Timeline'),
-                subtitle: const Text(
-                  'Adds high-resolution A4 page with detailed activities',
-                ),
-                value: _includeDetailedTimeline,
-                activeColor: primaryGreen,
-                onChanged: (bool value) {
-                  setState(() => _includeDetailedTimeline = value);
-                  setModalState(() {});
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: Icon(Icons.share, color: primaryGreen),
-                title: const Text('Share Daily PDF'),
-                onTap: () {
-                  Navigator.pop(context);
-                  TachoPdfGenerator.exportDailyReport(
-                    day: day,
-                    primaryColor: primaryGreen,
-                    cardId: widget.cardId,
-                    vehicles: widget.vehicles,
-                    vehiclesG2: widget.vehiclesG2,
-                    allEvents: widget.driverEvents,
-                    places: widget.places,
-                    placesG2: widget.placesG2,
-                    isGen2View: widget.isGen2View,
-                    utcOffset: widget.utcOffset,
-                    under50km: widget.under50km,
-                    includeDetailedTimeline: _includeDetailedTimeline,
-                    share: true,
-                    allActivities: widget.activities,
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.open_in_new, color: Colors.blue),
-                title: const Text('Open PDF'),
-                onTap: () {
-                  Navigator.pop(context);
-                  TachoPdfGenerator.exportDailyReport(
-                    day: day,
-                    primaryColor: primaryGreen,
-                    cardId: widget.cardId,
-                    vehicles: widget.vehicles,
-                    vehiclesG2: widget.vehiclesG2,
-                    allEvents: widget.driverEvents,
-                    places: widget.places,
-                    placesG2: widget.placesG2,
-                    isGen2View: widget.isGen2View,
-                    utcOffset: widget.utcOffset,
-                    under50km: widget.under50km,
-                    includeDetailedTimeline: _includeDetailedTimeline,
-                    openImmediately: true,
-                    allActivities: widget.activities,
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.save_alt, color: Colors.green),
-                title: const Text('Save PDF'),
-                onTap: () {
-                  Navigator.pop(context);
-                  TachoPdfGenerator.exportDailyReport(
-                    day: day,
-                    primaryColor: primaryGreen,
-                    cardId: widget.cardId,
-                    vehicles: widget.vehicles,
-                    vehiclesG2: widget.vehiclesG2,
-                    allEvents: widget.driverEvents,
-                    places: widget.places,
-                    placesG2: widget.placesG2,
-                    isGen2View: widget.isGen2View,
-                    utcOffset: widget.utcOffset,
-                    under50km: widget.under50km,
-                    includeDetailedTimeline: _includeDetailedTimeline,
-                    openImmediately: false,
-                    allActivities: widget.activities,
-                  );
-                },
-              ),
-            ],
-          ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.share, color: primaryGreen),
+              title: const Text('Share Daily PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  places: widget.places,
+                  placesG2: widget.placesG2,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  share: true,
+                  allActivities: widget.activities,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.open_in_new, color: Colors.blue),
+              title: const Text('Open PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  places: widget.places,
+                  placesG2: widget.placesG2,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  openImmediately: true,
+                  allActivities: widget.activities,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt, color: Colors.green),
+              title: const Text('Save PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                TachoPdfGenerator.exportDailyReport(
+                  day: day,
+                  primaryColor: primaryGreen,
+                  cardId: widget.cardId,
+                  vehicles: widget.vehicles,
+                  vehiclesG2: widget.vehiclesG2,
+                  allEvents: widget.driverEvents,
+                  places: widget.places,
+                  placesG2: widget.placesG2,
+                  isGen2View: widget.isGen2View,
+                  utcOffset: widget.utcOffset,
+                  under50km: widget.under50km,
+                  allActivities: widget.activities,
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
