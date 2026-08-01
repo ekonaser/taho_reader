@@ -1,8 +1,8 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'taho_pdf_generator.dart';
 import 'event_model.dart';
 
@@ -88,12 +88,154 @@ class _TimelineRenderData {
   });
 }
 
+void _paintTimeline({
+  required Canvas canvas,
+  required Size size,
+  required double hourWidth,
+  required double contentStartX,
+  required ColorScheme colorScheme,
+  required Color primaryGreen,
+  required _TimelineRenderData renderData,
+}) {
+  final gridPaint = Paint()
+    ..color = colorScheme.outlineVariant.withValues(alpha: 0.5)
+    ..strokeWidth = 1;
+  final minutePaint = Paint()
+    ..color = colorScheme.onSurfaceVariant.withValues(alpha: 0.15)
+    ..strokeWidth = 0.5;
+  final separatorPaint = Paint()
+    ..color = colorScheme.outlineVariant.withValues(alpha: 0.3)
+    ..strokeWidth = 1;
+
+  for (int h = 0; h <= 24; h++) {
+    final x = contentStartX + h * hourWidth;
+    canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+
+    if (h < 24) {
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: '${(h % 24).toString().padLeft(2, '0')}:00',
+          style: TextStyle(
+            fontSize: 10,
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(canvas, Offset(x + 4, size.height - 24));
+    }
+  }
+
+  for (final marker in renderData.minuteMarkers) {
+    canvas.drawLine(
+      Offset(contentStartX + marker.left, 0),
+      Offset(contentStartX + marker.left, size.height),
+      minutePaint,
+    );
+    if (marker.showLabel) {
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: marker.label,
+          style: TextStyle(
+            fontSize: 8,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      labelPainter.paint(
+        canvas,
+        Offset(contentStartX + marker.left + 2, size.height - 24),
+      );
+    }
+  }
+
+  for (final block in renderData.blocks) {
+    final rect = Rect.fromLTWH(
+      block.left,
+      block.top,
+      block.width,
+      block.height,
+    );
+    final borderPaint = Paint()
+      ..color = Colors.black26
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
+    canvas.drawRect(rect, fillPaint);
+    canvas.drawRect(rect, borderPaint);
+  }
+
+  for (final line in renderData.crewLines) {
+    canvas.drawRect(
+      Rect.fromLTWH(line.left, line.top, line.width, line.height),
+      Paint()..color = Colors.indigo,
+    );
+  }
+
+  canvas.drawLine(
+    Offset(contentStartX, renderData.separatorY),
+    Offset(contentStartX + (24 * hourWidth), renderData.separatorY),
+    separatorPaint,
+  );
+
+  for (final marker in renderData.placeMarkers) {
+    final markerLinePaint = Paint()
+      ..color = Colors.redAccent.withValues(alpha: 0.75)
+      ..strokeWidth = 0.8;
+    canvas.drawLine(
+      Offset(marker.left, 0),
+      Offset(marker.left, size.height),
+      markerLinePaint,
+    );
+
+    final labelPainter = TextPainter(
+      text: TextSpan(
+        text: marker.country,
+        style: TextStyle(
+          fontSize: 7,
+          fontWeight: FontWeight.bold,
+          color: marker.color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    labelPainter.paint(canvas, Offset(marker.left - 4, marker.top + 14));
+
+    final iconPainter = marker.type == 0
+        ? TahoInsertionPainter(color: marker.color)
+        : TahoWithdrawalPainter(color: marker.color);
+    canvas.save();
+    canvas.translate(marker.left - 4, marker.top);
+    iconPainter.paint(canvas, const Size(8, 12));
+    canvas.restore();
+  }
+
+  for (final marker in renderData.eventMarkers) {
+    canvas.drawLine(
+      Offset(marker.left, 120),
+      Offset(marker.left, 130),
+      Paint()
+        ..color = marker.color.withValues(alpha: 0.5)
+        ..strokeWidth = 2,
+    );
+    final iconPainter = IconPainter(color: marker.color);
+    canvas.save();
+    canvas.translate(marker.left - 10, 130);
+    iconPainter.paint(canvas, const Size(20, 20));
+    canvas.restore();
+  }
+}
+
 class _TimelinePainter extends CustomPainter {
   final double hourWidth;
   final double contentStartX;
   final ColorScheme colorScheme;
   final Color primaryGreen;
   final _TimelineRenderData renderData;
+  final ui.Picture? cachedPicture;
+  final Size? cachedSize;
 
   _TimelinePainter({
     required this.hourWidth,
@@ -101,162 +243,26 @@ class _TimelinePainter extends CustomPainter {
     required this.colorScheme,
     required this.primaryGreen,
     required this.renderData,
+    this.cachedPicture,
+    this.cachedSize,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = colorScheme.outlineVariant.withValues(alpha: 0.5)
-      ..strokeWidth = 1;
-    final minutePaint = Paint()
-      ..color = colorScheme.onSurfaceVariant.withValues(alpha: 0.15)
-      ..strokeWidth = 0.5;
-    final separatorPaint = Paint()
-      ..color = colorScheme.outlineVariant.withValues(alpha: 0.3)
-      ..strokeWidth = 1;
-
-    for (int h = 0; h <= 24; h++) {
-      final x = contentStartX + h * hourWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-
-      if (h < 24) {
-        final labelPainter = TextPainter(
-          text: TextSpan(
-            text: '${(h % 24).toString().padLeft(2, '0')}:00',
-            style: TextStyle(
-              fontSize: 10,
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        labelPainter.paint(canvas, Offset(x + 4, size.height - 24));
-      }
+    if (cachedPicture != null && cachedSize != null && cachedSize == size) {
+      canvas.drawPicture(cachedPicture!);
+      return;
     }
 
-    for (final marker in renderData.minuteMarkers) {
-      canvas.drawLine(
-        Offset(contentStartX + marker.left, 0),
-        Offset(contentStartX + marker.left, size.height),
-        minutePaint,
-      );
-      if (marker.showLabel) {
-        final labelPainter = TextPainter(
-          text: TextSpan(
-            text: marker.label,
-            style: TextStyle(
-              fontSize: 8,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        labelPainter.paint(
-          canvas,
-          Offset(contentStartX + marker.left + 2, size.height - 24),
-        );
-      }
-    }
-
-    for (final block in renderData.blocks) {
-      final rect = Rect.fromLTWH(
-        block.left,
-        block.top,
-        block.width,
-        block.height,
-      );
-      final borderPaint = Paint()
-        ..color = Colors.black12
-        ..strokeWidth = 0.5
-        ..style = PaintingStyle.stroke;
-      final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
-        fillPaint,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(4)),
-        borderPaint,
-      );
-    }
-
-    for (final line in renderData.crewLines) {
-      canvas.drawRect(
-        Rect.fromLTWH(line.left, line.top, line.width, line.height),
-        Paint()..color = Colors.indigo,
-      );
-    }
-
-    canvas.drawLine(
-      Offset(contentStartX, renderData.separatorY),
-      Offset(contentStartX + (24 * hourWidth), renderData.separatorY),
-      separatorPaint,
+    _paintTimeline(
+      canvas: canvas,
+      size: size,
+      hourWidth: hourWidth,
+      contentStartX: contentStartX,
+      colorScheme: colorScheme,
+      primaryGreen: primaryGreen,
+      renderData: renderData,
     );
-
-    final slotLabelStyle = TextStyle(
-      fontSize: 7,
-      color: colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.bold,
-    );
-    final slot2Painter = TextPainter(
-      text: TextSpan(text: 'SLOT 2', style: slotLabelStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final slot1Painter = TextPainter(
-      text: TextSpan(text: 'SLOT 1', style: slotLabelStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    canvas.save();
-    canvas.translate(8, renderData.slot2LabelY + 16);
-    canvas.rotate(-pi / 2);
-    slot2Painter.paint(canvas, Offset.zero);
-    canvas.restore();
-
-    canvas.save();
-    canvas.translate(8, renderData.slot1LabelY + 16);
-    canvas.rotate(-pi / 2);
-    slot1Painter.paint(canvas, Offset.zero);
-    canvas.restore();
-
-    for (final marker in renderData.placeMarkers) {
-      final labelPainter = TextPainter(
-        text: TextSpan(
-          text: marker.country,
-          style: TextStyle(
-            fontSize: 7,
-            fontWeight: FontWeight.bold,
-            color: marker.color,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      labelPainter.paint(canvas, Offset(marker.left - 4, marker.top - 14));
-
-      final iconPainter = marker.type == 0
-          ? TahoInsertionPainter(color: marker.color)
-          : TahoWithdrawalPainter(color: marker.color);
-      canvas.save();
-      canvas.translate(marker.left - 4, marker.top);
-      iconPainter.paint(canvas, const Size(8, 12));
-      canvas.restore();
-    }
-
-    for (final marker in renderData.eventMarkers) {
-      canvas.drawLine(
-        Offset(marker.left, 120),
-        Offset(marker.left, 130),
-        Paint()
-          ..color = marker.color.withValues(alpha: 0.5)
-          ..strokeWidth = 2,
-      );
-      final iconPainter = IconPainter(color: marker.color);
-      canvas.save();
-      canvas.translate(marker.left - 10, 130);
-      iconPainter.paint(canvas, const Size(20, 20));
-      canvas.restore();
-    }
   }
 
   @override
@@ -265,7 +271,9 @@ class _TimelinePainter extends CustomPainter {
         oldDelegate.contentStartX != contentStartX ||
         oldDelegate.colorScheme != colorScheme ||
         oldDelegate.primaryGreen != primaryGreen ||
-        oldDelegate.renderData != renderData;
+        oldDelegate.renderData != renderData ||
+        oldDelegate.cachedPicture != cachedPicture ||
+        oldDelegate.cachedSize != cachedSize;
   }
 }
 
@@ -341,6 +349,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   double _initialPinchDistance = 0.0;
   late _ViewMode _viewMode;
   DateTime _selectedMonth = DateTime.now();
+  ui.Picture? _cachedTimelinePicture;
+  String? _cachedTimelineKey;
+  Size? _cachedTimelineSize;
   DateTime? _startDate;
   DateTime? _endDate;
   bool _includeDetailedTimeline = false;
@@ -477,6 +488,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
     final double totalWidth = _hourWidth * 24;
+    final renderData = _buildTimelineRenderData(day, primaryGreen, colorScheme);
+
+    _summary.reset();
+    _summary.rest = renderData.summary.rest;
+    _summary.availability = renderData.summary.availability;
+    _summary.work = renderData.summary.work;
+    _summary.driving = renderData.summary.driving;
+    _summary.overdrive = renderData.summary.overdrive;
+    _summary.totalKm = renderData.summary.totalKm;
 
     return SingleChildScrollView(
       child: Column(
@@ -531,144 +551,177 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               ),
             ),
             const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: colorScheme.onSurface.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+            Builder(
+              builder: (context) {
+                final viewPadding = MediaQuery.paddingOf(context);
+                final screenWidth = MediaQuery.sizeOf(context).width;
+                final screenHeight = MediaQuery.sizeOf(context).height;
+                final safeHorizontalInset =
+                    viewPadding.left + viewPadding.right + 24.0;
+                final safeVerticalInset =
+                    viewPadding.top + viewPadding.bottom + 24.0;
+                final maxTimelineWidth = screenWidth - safeHorizontalInset;
+                final maxTimelineHeight =
+                    screenHeight - safeVerticalInset - 260.0;
+                final timelineWidth = maxTimelineWidth.clamp(
+                  280.0,
+                  double.infinity,
+                );
+                final timelineHeight = max(
+                  160.0,
+                  min(200.0, maxTimelineHeight.clamp(160.0, 200.0)),
+                );
+                final separatorY = renderData.separatorY;
+                final labelOffset = 18.0;
+                final slot2Top = separatorY - labelOffset - 8 * 2;
+                final slot1Top = separatorY + labelOffset - 8;
+                final pictureSize = Size(
+                  max(totalWidth, timelineWidth - 32),
+                  timelineHeight,
+                );
+                final timelineCacheKey =
+                    '${day.date.toIso8601String()}-${_hourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
+                if (_cachedTimelinePicture == null ||
+                    _cachedTimelineKey != timelineCacheKey ||
+                    _cachedTimelineSize != pictureSize) {
+                  final recorder = ui.PictureRecorder();
+                  final pictureCanvas = Canvas(
+                    recorder,
+                    Rect.fromLTWH(0, 0, pictureSize.width, pictureSize.height),
+                  );
+                  _paintTimeline(
+                    canvas: pictureCanvas,
+                    size: pictureSize,
+                    hourWidth: _hourWidth,
+                    contentStartX: 40,
+                    colorScheme: colorScheme,
+                    primaryGreen: primaryGreen,
+                    renderData: renderData,
+                  );
+                  _cachedTimelinePicture = recorder.endRecording();
+                  _cachedTimelineKey = timelineCacheKey;
+                  _cachedTimelineSize = pictureSize;
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  child: SizedBox(
+                    width: timelineWidth,
+                    height: timelineHeight,
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove, size: 16),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 30,
-                            minHeight: 30,
-                          ),
-                          onPressed: () => widget.onUtcOffsetChanged(
-                            widget.utcOffset == -12 ? 14 : widget.utcOffset - 1,
+                        SizedBox(
+                          width: 26,
+                          height: timelineHeight,
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                top: slot2Top,
+                                child: RotatedBox(
+                                  quarterTurns: 3,
+                                  child: Text(
+                                    'SLOT 2',
+                                    style: TextStyle(
+                                      fontSize: 7,
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: slot1Top,
+                                child: RotatedBox(
+                                  quarterTurns: 3,
+                                  child: Text(
+                                    'SLOT 1',
+                                    style: TextStyle(
+                                      fontSize: 7,
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Text(
-                          "UTC ${widget.utcOffset >= 0 ? '+' : ''}${widget.utcOffset}",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add, size: 16),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 30,
-                            minHeight: 30,
-                          ),
-                          onPressed: () => widget.onUtcOffsetChanged(
-                            widget.utcOffset == 14 ? -12 : widget.utcOffset + 1,
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (event) {
+                                _pointerPositions[event.pointer] =
+                                    event.position;
+                                if (_pointerPositions.length == 2) {
+                                  _baseHourWidth = _hourWidth;
+                                  final points = _pointerPositions.values
+                                      .toList();
+                                  _initialPinchDistance =
+                                      (points[0] - points[1]).distance;
+                                }
+                              },
+                              onPointerMove: (event) {
+                                if (_pointerPositions.length == 2) {
+                                  _pointerPositions[event.pointer] =
+                                      event.position;
+                                  final points = _pointerPositions.values
+                                      .toList();
+                                  final currentDistance =
+                                      (points[0] - points[1]).distance;
+
+                                  if (_initialPinchDistance > 0) {
+                                    final scale =
+                                        currentDistance / _initialPinchDistance;
+                                    setState(() {
+                                      _hourWidth = (_baseHourWidth * scale)
+                                          .clamp(70.0, 500.0);
+                                    });
+                                  }
+                                }
+                              },
+                              onPointerUp: (event) {
+                                _pointerPositions.remove(event.pointer);
+                                if (_pointerPositions.length < 2) {
+                                  _baseHourWidth = _hourWidth;
+                                  _initialPinchDistance = 0;
+                                }
+                              },
+                              onPointerCancel: (event) {
+                                _pointerPositions.remove(event.pointer);
+                                if (_pointerPositions.length < 2) {
+                                  _baseHourWidth = _hourWidth;
+                                  _initialPinchDistance = 0;
+                                }
+                              },
+                              child: Container(
+                                width: max(totalWidth, timelineWidth - 32),
+                                height: timelineHeight,
+                                color: Colors.transparent,
+                                child: CustomPaint(
+                                  size: pictureSize,
+                                  painter: _TimelinePainter(
+                                    hourWidth: _hourWidth,
+                                    contentStartX: 40,
+                                    colorScheme: colorScheme,
+                                    primaryGreen: primaryGreen,
+                                    renderData: renderData,
+                                    cachedPicture: _cachedTimelinePicture,
+                                    cachedSize: pictureSize,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: Icon(Icons.chevron_left, color: primaryGreen),
-                    onPressed: widget.onPrevDay,
-                    tooltip: "Previous Day",
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.chevron_right, color: primaryGreen),
-                    onPressed: widget.onNextDay,
-                    tooltip: "Next Day",
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              height: 200,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: (event) {
-                    _pointerPositions[event.pointer] = event.position;
-                    if (_pointerPositions.length == 2) {
-                      _baseHourWidth = _hourWidth;
-                      final points = _pointerPositions.values.toList();
-                      _initialPinchDistance = (points[0] - points[1]).distance;
-                    }
-                  },
-                  onPointerMove: (event) {
-                    if (_pointerPositions.length == 2) {
-                      _pointerPositions[event.pointer] = event.position;
-                      final points = _pointerPositions.values.toList();
-                      final currentDistance = (points[0] - points[1]).distance;
-
-                      if (_initialPinchDistance > 0) {
-                        final scale = currentDistance / _initialPinchDistance;
-                        setState(() {
-                          _hourWidth = (_baseHourWidth * scale).clamp(
-                            70.0,
-                            500.0,
-                          );
-                        });
-                      }
-                    }
-                  },
-                  onPointerUp: (event) {
-                    _pointerPositions.remove(event.pointer);
-                    if (_pointerPositions.length < 2) {
-                      _baseHourWidth = _hourWidth;
-                      _initialPinchDistance = 0;
-                    }
-                  },
-                  onPointerCancel: (event) {
-                    _pointerPositions.remove(event.pointer);
-                    if (_pointerPositions.length < 2) {
-                      _baseHourWidth = _hourWidth;
-                      _initialPinchDistance = 0;
-                    }
-                  },
-                  child: Builder(
-                    builder: (context) {
-                      final renderData = _buildTimelineRenderData(
-                        day,
-                        primaryGreen,
-                        colorScheme,
-                      );
-                      _summary.reset();
-                      _summary.rest = renderData.summary.rest;
-                      _summary.availability = renderData.summary.availability;
-                      _summary.work = renderData.summary.work;
-                      _summary.driving = renderData.summary.driving;
-                      _summary.overdrive = renderData.summary.overdrive;
-                      _summary.totalKm = renderData.summary.totalKm;
-
-                      return Container(
-                        width: totalWidth + 80,
-                        height: 200,
-                        color: Colors.transparent,
-                        child: CustomPaint(
-                          size: Size(totalWidth + 80, 200),
-                          painter: _TimelinePainter(
-                            hourWidth: _hourWidth,
-                            contentStartX: 40,
-                            colorScheme: colorScheme,
-                            primaryGreen: primaryGreen,
-                            renderData: renderData,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
+                );
+              },
             ),
             const Divider(),
             _buildLegend(primaryGreen, _summary),
@@ -1964,14 +2017,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
 
     if (interval > 0) {
-      for (int m = interval; m < 60; m += interval) {
-        minuteMarkers.add(
-          _TimelineMinuteMarker(
-            left: (m / 60.0) * _hourWidth,
-            showLabel: _hourWidth > 220 && (m % 15 == 0),
-            label: m.toString().padLeft(2, '0'),
-          ),
-        );
+      for (int hour = 0; hour < 24; hour++) {
+        for (int m = interval; m < 60; m += interval) {
+          minuteMarkers.add(
+            _TimelineMinuteMarker(
+              left: hour * _hourWidth + (m / 60.0) * _hourWidth,
+              showLabel: _hourWidth > 220 && (m % 5 == 0),
+              label: m.toString().padLeft(2, '0'),
+            ),
+          );
+        }
       }
     }
 
@@ -1980,7 +2035,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     allPlaces.addAll(widget.placesG2);
 
     for (var place in allPlaces) {
-      if (place.entryTime.isAfter(windowStart) && place.entryTime.isBefore(windowEnd)) {
+      if (place.entryTime.isAfter(windowStart) &&
+          place.entryTime.isBefore(windowEnd)) {
         final hour = place.entryTime.difference(windowStart).inSeconds / 3600.0;
         placeMarkers.add(
           _TimelinePlaceMarker(
