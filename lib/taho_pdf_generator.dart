@@ -19,6 +19,7 @@ class TachoPdfGenerator {
     bool under50km = false,
     bool openImmediately = false,
     bool share = false,
+    Map<DateTime, Uint8List>? dailyTimelineImages,
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
@@ -169,6 +170,46 @@ class TachoPdfGenerator {
           if (eventsInPeriod.isNotEmpty) ...[
             pw.SizedBox(height: 20),
             _buildEventsSection(eventsInPeriod, pdfPrimaryGreen),
+          ],
+          if (dailyTimelineImages != null && dailyTimelineImages.isNotEmpty) ...[
+            pw.NewPage(),
+            pw.Text(
+              "VISUAL DAILY TIMELINES",
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: pdfPrimaryGreen,
+              ),
+            ),
+            pw.Divider(thickness: 1, color: pdfPrimaryGreen),
+            pw.SizedBox(height: 10),
+            ...dailyTimelineImages.entries.map((entry) {
+              final dateStr = entry.key.toLocal().toString().split(' ').first;
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.SizedBox(height: 15),
+                  pw.Text(
+                    "$dateStr",
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Container(
+                    width: double.infinity,
+                    child: pw.Image(
+                      pw.MemoryImage(entry.value),
+                      fit: pw.BoxFit.contain,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Divider(thickness: 0.5, color: PdfColors.grey300),
+                ],
+              );
+            }).toList(),
           ],
         ],
       ),

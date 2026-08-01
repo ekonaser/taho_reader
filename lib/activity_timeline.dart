@@ -1608,8 +1608,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             ListTile(
               leading: Icon(Icons.share, color: primaryGreen),
               title: const Text('Share Summary PDF'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                final images = <DateTime, Uint8List>{};
+                for (var day in days) {
+                  final bytes = await _captureTimelineImage(day);
+                  images[day.date] = bytes;
+                }
                 TachoPdfGenerator.exportSummaryReport(
                   days: days,
                   title: title,
@@ -1620,14 +1625,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   utcOffset: widget.utcOffset,
                   under50km: widget.under50km,
                   share: true,
+                  dailyTimelineImages: images,
                 );
               },
             ),
             ListTile(
               leading: const Icon(Icons.open_in_new, color: Colors.blue),
               title: const Text('Open Summary PDF'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                final images = <DateTime, Uint8List>{};
+                for (var day in days) {
+                  final bytes = await _captureTimelineImage(day);
+                  images[day.date] = bytes;
+                }
                 TachoPdfGenerator.exportSummaryReport(
                   days: days,
                   title: title,
@@ -1638,14 +1649,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   utcOffset: widget.utcOffset,
                   under50km: widget.under50km,
                   openImmediately: true,
+                  dailyTimelineImages: images,
                 );
               },
             ),
             ListTile(
               leading: const Icon(Icons.save_alt, color: Colors.green),
               title: const Text('Save Summary PDF'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                final images = <DateTime, Uint8List>{};
+                for (var day in days) {
+                  final bytes = await _captureTimelineImage(day);
+                  images[day.date] = bytes;
+                }
                 TachoPdfGenerator.exportSummaryReport(
                   days: days,
                   title: title,
@@ -1656,6 +1673,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   utcOffset: widget.utcOffset,
                   under50km: widget.under50km,
                   openImmediately: false,
+                  dailyTimelineImages: images,
                 );
               },
             ),
