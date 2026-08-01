@@ -109,11 +109,27 @@ void _paintTimeline({
     ..color = colorScheme.outlineVariant.withValues(alpha: 0.3)
     ..strokeWidth = 1;
 
+  // Določi korak glede na širino za oznake ur (thinning logic)
+  final int labelStep;
+  if (hourWidth > 60) {
+    labelStep = 1; // vsaka ura
+  } else if (hourWidth > 30) {
+    labelStep = 3; // vsaka 3. ura
+  } else if (hourWidth > 15) {
+    labelStep = 6; // vsaka 6. ura
+  } else {
+    labelStep = 12; // samo 00, 12, 24
+  }
+
   for (int h = 0; h <= 24; h++) {
     final x = contentStartX + h * hourWidth;
-    canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    
+    // Riši grid črto samo če rišemo labelo ali če je dovolj prostora
+    if (hourWidth > 20 || h % labelStep == 0) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
 
-    if (h < 24) {
+    if (h <= 24 && h % labelStep == 0) {
       final labelPainter = TextPainter(
         text: TextSpan(
           text: '${(h % 24).toString().padLeft(2, '0')}:00',
@@ -125,7 +141,18 @@ void _paintTimeline({
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      labelPainter.paint(canvas, Offset(x + 4, size.height - 24));
+      
+      // Centriraj labelo na črti, če ni na koncu
+      double labelX = x;
+      if (h == 24) {
+        labelX -= labelPainter.width;
+      } else if (h > 0) {
+        labelX -= labelPainter.width / 2;
+      } else {
+        labelX += 2;
+      }
+      
+      labelPainter.paint(canvas, Offset(labelX, size.height - 24));
     }
   }
 
@@ -369,8 +396,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   double _hourWidth = 120.0;
   double _baseHourWidth = 120.0;
   final ActivitySummary _summary = ActivitySummary();
-  final Map<int, Offset> _pointerPositions = {};
-  double _initialPinchDistance = 0.0;
   late _ViewMode _viewMode;
   DateTime _selectedMonth = DateTime.now();
   ui.Picture? _cachedTimelinePicture;
@@ -379,6 +404,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _includeDetailedTimeline = false;
+
+  bool _isManualZoom = false;
 
   @override
   void initState() {
@@ -511,123 +538,142 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
-    final double totalWidth = _hourWidth * 24;
-    final renderData = _buildTimelineRenderData(day, primaryGreen, colorScheme);
 
-    _summary.reset();
-    _summary.rest = renderData.summary.rest;
-    _summary.availability = renderData.summary.availability;
-    _summary.work = renderData.summary.work;
-    _summary.driving = renderData.summary.driving;
-    _summary.overdrive = renderData.summary.overdrive;
-    _summary.totalKm = renderData.summary.totalKm;
+    return Builder(
+      builder: (context) {
+        final viewPadding = MediaQuery.paddingOf(context);
+        final screenWidth = MediaQuery.sizeOf(context).width;
+        final screenHeight = MediaQuery.sizeOf(context).height;
+        final safeHorizontalInset =
+            viewPadding.left + viewPadding.right + 24.0;
+        final safeVerticalInset =
+            viewPadding.top + viewPadding.bottom + 24.0;
+        final maxTimelineWidth = screenWidth - safeHorizontalInset;
+        final maxTimelineHeight =
+            screenHeight - safeVerticalInset - 260.0;
+        final timelineWidth = maxTimelineWidth.clamp(
+          280.0,
+          double.infinity,
+        );
+        final timelineHeight = max(
+          160.0,
+          min(200.0, maxTimelineHeight.clamp(160.0, 200.0)),
+        );
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_viewMode == _ViewMode.daily) ...[
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      "Daily Activity",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: widget.onDateTap,
-                    borderRadius: BorderRadius.circular(4),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.calendar_month,
-                            size: 16,
-                            color: primaryGreen,
+        const double contentStartX = 0.0;
+        final double availableWidth = timelineWidth - 32;
+        final double fitWidth = availableWidth / 24.0;
+
+        // Use fitWidth as default if not manually zoomed.
+        // Also ensure we never go below fitWidth (e.g. after screen rotation).
+        final double effectiveHourWidth =
+            _isManualZoom ? max(_hourWidth, fitWidth) : fitWidth;
+
+        // CRITICAL: Re-calculate render data based on the effective scale
+        final renderData = _buildTimelineRenderData(
+          day: day,
+          primaryGreen: primaryGreen,
+          colorScheme: colorScheme,
+          hourWidth: effectiveHourWidth,
+        );
+
+        // Update summary for legend
+        _summary.reset();
+        _summary.rest = renderData.summary.rest;
+        _summary.availability = renderData.summary.availability;
+        _summary.work = renderData.summary.work;
+        _summary.driving = renderData.summary.driving;
+        _summary.overdrive = renderData.summary.overdrive;
+        _summary.totalKm = renderData.summary.totalKm;
+
+        final separatorY = renderData.separatorY;
+        final labelOffset = 18.0;
+        final slot2Top = separatorY - labelOffset - 8 * 2;
+        final slot1Top = separatorY + labelOffset - 8;
+        final pictureSize = Size(
+          max(effectiveHourWidth * 24, timelineWidth - 32),
+          timelineHeight,
+        );
+
+        final timelineCacheKey =
+            '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
+        
+        if (_cachedTimelinePicture == null ||
+            _cachedTimelineKey != timelineCacheKey ||
+            _cachedTimelineSize != pictureSize) {
+          final recorder = ui.PictureRecorder();
+          final pictureCanvas = Canvas(
+            recorder,
+            Rect.fromLTWH(0, 0, pictureSize.width, pictureSize.height),
+          );
+          _paintTimeline(
+            canvas: pictureCanvas,
+            size: pictureSize,
+            hourWidth: effectiveHourWidth,
+            contentStartX: contentStartX,
+            colorScheme: colorScheme,
+            primaryGreen: primaryGreen,
+            renderData: renderData,
+          );
+          _cachedTimelinePicture = recorder.endRecording();
+          _cachedTimelineKey = timelineCacheKey;
+          _cachedTimelineSize = pictureSize;
+        }
+
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_viewMode == _ViewMode.daily) ...[
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "Daily Activity",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            day.date.toLocal().toString().split(' ').first,
-                            style: TextStyle(
-                              color: primaryGreen,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: widget.onDateTap,
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.calendar_month,
+                                size: 16,
+                                color: primaryGreen,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                day.date.toLocal().toString().split(' ').first,
+                                style: TextStyle(
+                                  color: primaryGreen,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Builder(
-              builder: (context) {
-                final viewPadding = MediaQuery.paddingOf(context);
-                final screenWidth = MediaQuery.sizeOf(context).width;
-                final screenHeight = MediaQuery.sizeOf(context).height;
-                final safeHorizontalInset =
-                    viewPadding.left + viewPadding.right + 24.0;
-                final safeVerticalInset =
-                    viewPadding.top + viewPadding.bottom + 24.0;
-                final maxTimelineWidth = screenWidth - safeHorizontalInset;
-                final maxTimelineHeight =
-                    screenHeight - safeVerticalInset - 260.0;
-                final timelineWidth = maxTimelineWidth.clamp(
-                  280.0,
-                  double.infinity,
-                );
-                final timelineHeight = max(
-                  160.0,
-                  min(200.0, maxTimelineHeight.clamp(160.0, 200.0)),
-                );
-                final separatorY = renderData.separatorY;
-                final labelOffset = 18.0;
-                final slot2Top = separatorY - labelOffset - 8 * 2;
-                final slot1Top = separatorY + labelOffset - 8;
-                final pictureSize = Size(
-                  max(totalWidth, timelineWidth - 32),
-                  timelineHeight,
-                );
-                final timelineCacheKey =
-                    '${day.date.toIso8601String()}-${widget.utcOffset}-${_hourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
-                if (_cachedTimelinePicture == null ||
-                    _cachedTimelineKey != timelineCacheKey ||
-                    _cachedTimelineSize != pictureSize) {
-                  final recorder = ui.PictureRecorder();
-                  final pictureCanvas = Canvas(
-                    recorder,
-                    Rect.fromLTWH(0, 0, pictureSize.width, pictureSize.height),
-                  );
-                  _paintTimeline(
-                    canvas: pictureCanvas,
-                    size: pictureSize,
-                    hourWidth: _hourWidth,
-                    contentStartX: 40,
-                    colorScheme: colorScheme,
-                    primaryGreen: primaryGreen,
-                    renderData: renderData,
-                  );
-                  _cachedTimelinePicture = recorder.endRecording();
-                  _cachedTimelineKey = timelineCacheKey;
-                  _cachedTimelineSize = pictureSize;
-                }
-
-                return Padding(
+                ),
+                const SizedBox(height: 8),
+                Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 5),
                   child: SizedBox(
                     width: timelineWidth,
@@ -675,67 +721,24 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                         Expanded(
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (event) {
-                                _pointerPositions[event.pointer] =
-                                    event.position;
-                                if (_pointerPositions.length == 2) {
-                                  _baseHourWidth = _hourWidth;
-                                  final points = _pointerPositions.values
-                                      .toList();
-                                  _initialPinchDistance =
-                                      (points[0] - points[1]).distance;
-                                }
-                              },
-                              onPointerMove: (event) {
-                                if (_pointerPositions.length == 2) {
-                                  _pointerPositions[event.pointer] =
-                                      event.position;
-                                  final points = _pointerPositions.values
-                                      .toList();
-                                  final currentDistance =
-                                      (points[0] - points[1]).distance;
-
-                                  if (_initialPinchDistance > 0) {
-                                    final scale =
-                                        currentDistance / _initialPinchDistance;
-                                    setState(() {
-                                      _hourWidth = (_baseHourWidth * scale)
-                                          .clamp(70.0, 500.0);
-                                    });
-                                  }
-                                }
-                              },
-                              onPointerUp: (event) {
-                                _pointerPositions.remove(event.pointer);
-                                if (_pointerPositions.length < 2) {
-                                  _baseHourWidth = _hourWidth;
-                                  _initialPinchDistance = 0;
-                                }
-                              },
-                              onPointerCancel: (event) {
-                                _pointerPositions.remove(event.pointer);
-                                if (_pointerPositions.length < 2) {
-                                  _baseHourWidth = _hourWidth;
-                                  _initialPinchDistance = 0;
-                                }
-                              },
-                              child: Container(
-                                width: max(totalWidth, timelineWidth - 32),
-                                height: timelineHeight,
-                                color: Colors.transparent,
-                                child: CustomPaint(
-                                  size: pictureSize,
-                                  painter: _TimelinePainter(
-                                    hourWidth: _hourWidth,
-                                    contentStartX: 40,
-                                    colorScheme: colorScheme,
-                                    primaryGreen: primaryGreen,
-                                    renderData: renderData,
-                                    cachedPicture: _cachedTimelinePicture,
-                                    cachedSize: pictureSize,
-                                  ),
+                            physics: const ClampingScrollPhysics(),
+                            child: Container(
+                              width: max(
+                                effectiveHourWidth * 24,
+                                timelineWidth - 32,
+                              ),
+                              height: timelineHeight,
+                              color: Colors.transparent,
+                              child: CustomPaint(
+                                size: pictureSize,
+                                painter: _TimelinePainter(
+                                  hourWidth: effectiveHourWidth,
+                                  contentStartX: contentStartX,
+                                  colorScheme: colorScheme,
+                                  primaryGreen: primaryGreen,
+                                  renderData: renderData,
+                                  cachedPicture: _cachedTimelinePicture,
+                                  cachedSize: pictureSize,
                                 ),
                               ),
                             ),
@@ -744,162 +747,203 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       ],
                     ),
                   ),
-                );
-              },
-            ),
-            const Divider(),
-            _buildLegend(primaryGreen, _summary),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Activity Log",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.picture_as_pdf, color: primaryGreen),
-                    onPressed: () => _showExportOptions(day, primaryGreen),
-                    tooltip: "Export to PDF",
-                  ),
-                ],
-              ),
-            ),
-            ..._buildActivityLog(day, primaryGreen),
-            const SizedBox(height: 32),
-          ] else if (_viewMode == _ViewMode.period) ...[
-            // Period View
-            _buildSummaryHeader(
-              "Custom Period",
-              "Summary for the selected range",
-              primaryGreen,
-              onExport: () {
-                final days = _getFilteredRangeDays();
-                final rangeStr = _startDate != null && _endDate != null
-                    ? "${_startDate!.day}.${_startDate!.month} - ${_endDate!.day}.${_endDate!.month}"
-                    : "Unknown";
-                _showSummaryExportOptions(
-                  days,
-                  "Period Report",
-                  rangeStr,
-                  primaryGreen,
-                );
-              },
-              trailing: InkWell(
-                onTap: () => _selectDateRange(context),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: primaryGreen.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: primaryGreen.withValues(alpha: 0.2),
-                    ),
-                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Row(
                     children: [
-                      Icon(Icons.calendar_month, size: 20, color: primaryGreen),
-                      const SizedBox(width: 8),
-                      Text(
-                        _startDate != null && _endDate != null
-                            ? "${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}"
-                            : "Select Range",
-                        style: TextStyle(
-                          color: primaryGreen,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        color: primaryGreen,
+                        onPressed: widget.onPrevDay,
+                        tooltip: "Prejšnji dan",
+                      ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.zoom_out, size: 18, color: colorScheme.onSurfaceVariant),
+                            Expanded(
+                              child: Slider(
+                                value: effectiveHourWidth,
+                                min: fitWidth,
+                                max: 500.0,
+                                activeColor: primaryGreen,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _isManualZoom = true;
+                                    _hourWidth = value;
+                                  });
+                                },
+                              ),
+                            ),
+                            Icon(Icons.zoom_in, size: 18, color: colorScheme.onSurfaceVariant),
+                          ],
                         ),
                       ),
-                      Icon(Icons.arrow_drop_down, color: primaryGreen),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        color: primaryGreen,
+                        onPressed: widget.onNextDay,
+                        tooltip: "Naslednji dan",
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            _buildSummaryContent(_calculateRangeSummary(), primaryGreen),
-            const SizedBox(height: 32),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Activity Statistics",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildVisualBreakdown(primaryGreen, _calculateRangeSummary()),
-          ] else ...[
-            // Monthly View
-            _buildSummaryHeader(
-              "Monthly Activity",
-              "Total summary for the selected period",
-              primaryGreen,
-              onExport: () {
-                final days = _getFilteredMonthlyDays();
-                final rangeStr =
-                    "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}";
-                _showSummaryExportOptions(
-                  days,
-                  "Monthly Report",
-                  rangeStr,
-                  primaryGreen,
-                );
-              },
-              trailing: InkWell(
-                onTap: () => _selectMonth(context),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: primaryGreen.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: primaryGreen.withValues(alpha: 0.2),
-                    ),
-                  ),
+                const Divider(),
+                _buildLegend(primaryGreen, _summary),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(Icons.calendar_month, size: 20, color: primaryGreen),
-                      const SizedBox(width: 8),
                       Text(
-                        "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}",
+                        "Activity Log",
                         style: TextStyle(
-                          color: primaryGreen,
-                          fontWeight: FontWeight.bold,
                           fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
                         ),
                       ),
-                      Icon(Icons.arrow_drop_down, color: primaryGreen),
+                      IconButton(
+                        icon: Icon(Icons.picture_as_pdf, color: primaryGreen),
+                        onPressed: () => _showExportOptions(day, primaryGreen),
+                        tooltip: "Export to PDF",
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            _buildSummaryContent(_calculateMonthlySummary(), primaryGreen),
-            const SizedBox(height: 32),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                "Activity Statistics",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildVisualBreakdown(primaryGreen, _calculateMonthlySummary()),
-          ],
-        ],
-      ),
+                ..._buildActivityLog(day, primaryGreen),
+                const SizedBox(height: 32),
+              ] else if (_viewMode == _ViewMode.period) ...[
+                // Period View
+                _buildSummaryHeader(
+                  "Custom Period",
+                  "Summary for the selected range",
+                  primaryGreen,
+                  onExport: () {
+                    final days = _getFilteredRangeDays();
+                    final rangeStr = _startDate != null && _endDate != null
+                        ? "${_startDate!.day}.${_startDate!.month} - ${_endDate!.day}.${_endDate!.month}"
+                        : "Unknown";
+                    _showSummaryExportOptions(
+                      days,
+                      "Period Report",
+                      rangeStr,
+                      primaryGreen,
+                    );
+                  },
+                  trailing: InkWell(
+                    onTap: () => _selectDateRange(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: primaryGreen.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                          const SizedBox(width: 8),
+                          Text(
+                            _startDate != null && _endDate != null
+                                ? "${_startDate!.day}/${_startDate!.month} - ${_endDate!.day}/${_endDate!.month}"
+                                : "Select Range",
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Icon(Icons.arrow_drop_down, color: primaryGreen),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                _buildSummaryContent(_calculateRangeSummary(), primaryGreen),
+                const SizedBox(height: 32),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    "Activity Statistics",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildVisualBreakdown(primaryGreen, _calculateRangeSummary()),
+              ] else ...[
+                // Monthly View
+                _buildSummaryHeader(
+                  "Monthly Activity",
+                  "Total summary for the selected period",
+                  primaryGreen,
+                  onExport: () {
+                    final days = _getFilteredMonthlyDays();
+                    final rangeStr =
+                        "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}";
+                    _showSummaryExportOptions(
+                      days,
+                      "Monthly Report",
+                      rangeStr,
+                      primaryGreen,
+                    );
+                  },
+                  trailing: InkWell(
+                    onTap: () => _selectMonth(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: primaryGreen.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                          const SizedBox(width: 8),
+                          Text(
+                            "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}",
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Icon(Icons.arrow_drop_down, color: primaryGreen),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                _buildSummaryContent(_calculateMonthlySummary(), primaryGreen),
+                const SizedBox(height: 32),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    "Activity Statistics",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildVisualBreakdown(primaryGreen, _calculateMonthlySummary()),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1851,11 +1895,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
   }
 
-  _TimelineRenderData _buildTimelineRenderData(
-    DailyActivities day,
-    Color primaryGreen,
-    ColorScheme colorScheme,
-  ) {
+  _TimelineRenderData _buildTimelineRenderData({
+    required DailyActivities day,
+    required Color primaryGreen,
+    required ColorScheme colorScheme,
+    required double hourWidth,
+  }) {
     final summary = ActivitySummary();
     final blocks = <_TimelineBlock>[];
     final crewLines = <_TimelineBlock>[];
@@ -1978,9 +2023,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               if (regularDuration > 0) {
                 blocks.add(
                   _TimelineBlock(
-                    left: 40 + startH * _hourWidth,
+                    left: startH * hourWidth,
                     top: blockTop,
-                    width: max(2.0, regularDuration * _hourWidth),
+                    width: max(2.0, regularDuration * hourWidth),
                     height: blockHeight,
                     color: Colors.blue,
                     durationMinutes: (regularDuration * 60).round(),
@@ -1990,9 +2035,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               final overdriveDuration = (accumulatedDriving - 270) / 60.0;
               blocks.add(
                 _TimelineBlock(
-                  left: 40 + (startH + max(0, regularDuration)) * _hourWidth,
+                  left: (startH + max(0, regularDuration)) * hourWidth,
                   top: blockTop,
-                  width: max(2.0, overdriveDuration * _hourWidth),
+                  width: max(2.0, overdriveDuration * hourWidth),
                   height: blockHeight,
                   color: Colors.red,
                   durationMinutes: (overdriveDuration * 60).round(),
@@ -2013,9 +2058,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       if (color != Colors.transparent) {
         blocks.add(
           _TimelineBlock(
-            left: 40 + startH * _hourWidth,
+            left: startH * hourWidth,
             top: blockTop,
-            width: max(2.0, (endH - startH) * _hourWidth),
+            width: max(2.0, (endH - startH) * hourWidth),
             height: blockHeight,
             color: color,
             durationMinutes: durationMinutes,
@@ -2026,9 +2071,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       if (rec.crew == 1) {
         crewLines.add(
           _TimelineBlock(
-            left: 40 + startH * _hourWidth,
+            left: startH * hourWidth,
             top: separatorY, // Oba se stikata na ločilni črti
-            width: max(2.0, (endH - startH) * _hourWidth),
+            width: max(2.0, (endH - startH) * hourWidth),
             height: 2,
             color: Colors.indigo,
             isCrewLine: true,
@@ -2056,11 +2101,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
 
     int interval;
-    if (_hourWidth > 420) {
+    if (hourWidth > 420) {
       interval = 5;
-    } else if (_hourWidth > 250) {
+    } else if (hourWidth > 250) {
       interval = 15;
-    } else if (_hourWidth > 120) {
+    } else if (hourWidth > 120) {
       interval = 30;
     } else {
       interval = 0;
@@ -2071,8 +2116,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         for (int m = interval; m < 60; m += interval) {
           minuteMarkers.add(
             _TimelineMinuteMarker(
-              left: hour * _hourWidth + (m / 60.0) * _hourWidth,
-              showLabel: _hourWidth > 220 && (m % 5 == 0),
+              left: hour * hourWidth + (m / 60.0) * hourWidth,
+              showLabel: hourWidth > 220 && (m % 5 == 0),
               label: m.toString().padLeft(2, '0'),
             ),
           );
@@ -2090,7 +2135,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final hour = place.entryTime.difference(windowStart).inSeconds / 3600.0;
         placeMarkers.add(
           _TimelinePlaceMarker(
-            left: 40 + hour * _hourWidth - 0.0,
+            left: hour * hourWidth,
             top: 0,
             country: _getCountryCode(place.dailyWorkPeriodCountry),
             color: place.entryTypeDailyWorkPeriod == 0
@@ -2107,7 +2152,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final hour = event.date.difference(windowStart).inSeconds / 3600.0;
         eventMarkers.add(
           _TimelineEventMarker(
-            left: 40 + hour * _hourWidth,
+            left: hour * hourWidth,
             top: 125,
             color: _getEventColor(event.type),
           ),
