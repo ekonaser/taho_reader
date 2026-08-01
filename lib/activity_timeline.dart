@@ -164,7 +164,6 @@ void _paintTimeline({
       ..style = PaintingStyle.stroke;
     final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
     canvas.drawRect(rect, fillPaint);
-    canvas.drawRect(rect, borderPaint);
   }
 
   for (final line in renderData.crewLines) {
@@ -1883,6 +1882,29 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       final durationMinutes = ((endH - startH) * 60).round();
       if (durationMinutes <= 0) return;
 
+      double blockHeight;
+      switch (rec.activity) {
+        case 3: // Driving
+          blockHeight = 48.0;
+          break;
+        case 1: // Availability
+          blockHeight = 38.4;
+          break;
+        case 2: // Work
+          blockHeight = 30.72;
+          break;
+        case 0: // Rest
+          blockHeight = 19.2;
+          break;
+        default:
+          blockHeight = 32.0;
+      }
+
+      const double separatorY = 79.5;
+      final double blockTop = rec.slot == 1 
+          ? separatorY - blockHeight // SLOT 2 (zgoraj) raste navzgor
+          : separatorY;              // SLOT 1 (spodaj) raste navzdol
+
       Color color;
       switch (rec.activity) {
         case 0:
@@ -1932,9 +1954,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 blocks.add(
                   _TimelineBlock(
                     left: 40 + startH * _hourWidth,
-                    top: rec.slot == 1 ? 45 : 83,
+                    top: blockTop,
                     width: max(2.0, regularDuration * _hourWidth),
-                    height: 32,
+                    height: blockHeight,
                     color: Colors.blue,
                   ),
                 );
@@ -1943,9 +1965,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               blocks.add(
                 _TimelineBlock(
                   left: 40 + (startH + max(0, regularDuration)) * _hourWidth,
-                  top: rec.slot == 1 ? 45 : 83,
+                  top: blockTop,
                   width: max(2.0, overdriveDuration * _hourWidth),
-                  height: 32,
+                  height: blockHeight,
                   color: Colors.red,
                 ),
               );
@@ -1965,9 +1987,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         blocks.add(
           _TimelineBlock(
             left: 40 + startH * _hourWidth,
-            top: rec.slot == 1 ? 45 : 83,
+            top: blockTop,
             width: max(2.0, (endH - startH) * _hourWidth),
-            height: 32,
+            height: blockHeight,
             color: color,
           ),
         );
@@ -1977,7 +1999,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         crewLines.add(
           _TimelineBlock(
             left: 40 + startH * _hourWidth,
-            top: rec.slot == 1 ? 77 : 81,
+            top: separatorY, // Oba se stikata na ločilni črti
             width: max(2.0, (endH - startH) * _hourWidth),
             height: 2,
             color: Colors.indigo,
