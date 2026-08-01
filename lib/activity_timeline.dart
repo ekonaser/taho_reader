@@ -201,13 +201,13 @@ void _paintTimeline({
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    labelPainter.paint(canvas, Offset(marker.left - 4, marker.top + 14));
+    labelPainter.paint(canvas, Offset(marker.left + 6, marker.top + 14));
 
     final iconPainter = marker.type == 0
         ? TahoInsertionPainter(color: marker.color)
         : TahoWithdrawalPainter(color: marker.color);
     canvas.save();
-    canvas.translate(marker.left - 4, marker.top);
+    canvas.translate(marker.left + 6, marker.top);
     iconPainter.paint(canvas, const Size(8, 12));
     canvas.restore();
   }
@@ -580,7 +580,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   timelineHeight,
                 );
                 final timelineCacheKey =
-                    '${day.date.toIso8601String()}-${_hourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
+                    '${day.date.toIso8601String()}-${widget.utcOffset}-${_hourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
                 if (_cachedTimelinePicture == null ||
                     _cachedTimelineKey != timelineCacheKey ||
                     _cachedTimelineSize != pictureSize) {
@@ -1977,7 +1977,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         crewLines.add(
           _TimelineBlock(
             left: 40 + startH * _hourWidth,
-            top: rec.slot == 1 ? 75 : 113,
+            top: rec.slot == 1 ? 77 : 81,
             width: max(2.0, (endH - startH) * _hourWidth),
             height: 2,
             color: Colors.indigo,
@@ -2040,7 +2040,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final hour = place.entryTime.difference(windowStart).inSeconds / 3600.0;
         placeMarkers.add(
           _TimelinePlaceMarker(
-            left: 40 + hour * _hourWidth - 4.0,
+            left: 40 + hour * _hourWidth - 0.0,
             top: 0,
             country: _getCountryCode(place.dailyWorkPeriodCountry),
             color: place.entryTypeDailyWorkPeriod == 0
