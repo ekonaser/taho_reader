@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
 import 'dart:math';
@@ -91,6 +92,17 @@ class _TimelineRenderData {
     required this.slot2LabelY,
     required this.slot1LabelY,
   });
+}
+
+DateTimeRange buildActivityLogEventTimeRange({
+  required DateTime windowStart,
+  required int startOffsetMinutes,
+  required int endOffsetMinutes,
+}) {
+  return DateTimeRange(
+    start: windowStart.add(Duration(minutes: startOffsetMinutes)),
+    end: windowStart.add(Duration(minutes: endOffsetMinutes)),
+  );
 }
 
 void _paintTimeline({
@@ -1796,6 +1808,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       final startOffset = start.difference(windowStart).inMinutes;
       final endOffset = end.difference(windowStart).inMinutes;
 
+      final range = buildActivityLogEventTimeRange(
+        windowStart: windowStart,
+        startOffsetMinutes: startOffset,
+        endOffsetMinutes: endOffset,
+      );
+
       items.add(
         _activityLogItem(
           rec.activity,
@@ -1805,6 +1823,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           primaryGreen,
           rec.slot,
           rec.crew == 1,
+          startDate: range.start,
+          endDate: range.end,
         ),
       );
     }
@@ -1836,8 +1856,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     int duration,
     Color primaryGreen,
     int slot,
-    bool isCrew,
-  ) {
+    bool isCrew, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
     String label;
     CustomPainter painter;
     Color color;
@@ -1887,51 +1909,258 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          SizedBox(width: 24, height: 24, child: CustomPaint(painter: painter)),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                displayLabel,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              Text(
-                "$startStr - $endStr",
-                style: TextStyle(
-                  color: colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            durStr,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color,
-              fontSize: 15,
-              fontFamily: 'monospace',
+    return InkWell(
+      onTap: startDate != null && endDate != null
+          ? () => _showActivityLogEventDialog(
+              startDate: startDate!,
+              endDate: endDate!,
+            )
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              width: 1,
             ),
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CustomPaint(painter: painter),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayLabel,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    "$startStr - $endStr",
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              durStr,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: color,
+                fontSize: 15,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showActivityLogEventDialog({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final typeController = TextEditingController();
+    final descController = TextEditingController();
+    final locController = TextEditingController();
+    final tagsController = TextEditingController();
+    DateTime selectedDate = startDate;
+    DateTime? selectedEndDate = endDate;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New Event'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Event Name',
+                    counterText: '',
+                  ),
+                  maxLength: 50,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: dialogContext,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date == null) return;
+                    final time = await showTimePicker(
+                      context: dialogContext,
+                      initialTime: TimeOfDay.fromDateTime(selectedDate),
+                    );
+                    if (time == null) return;
+                    setDialogState(() {
+                      selectedDate = DateTime(
+                        date.year,
+                        date.month,
+                        date.day,
+                        time.hour,
+                        time.minute,
+                      );
+                      if (selectedEndDate != null &&
+                          selectedEndDate!.isBefore(selectedDate)) {
+                        selectedEndDate = selectedDate.add(
+                          const Duration(hours: 1),
+                        );
+                      }
+                    });
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Start Date & Time',
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          selectedDate
+                              .toLocal()
+                              .toString()
+                              .split('.')[0]
+                              .substring(0, 16),
+                        ),
+                        const Icon(Icons.calendar_today, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: dialogContext,
+                      initialDate: selectedEndDate ?? selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date == null) return;
+                    final time = await showTimePicker(
+                      context: dialogContext,
+                      initialTime: TimeOfDay.fromDateTime(
+                        selectedEndDate ??
+                            selectedDate.add(const Duration(hours: 1)),
+                      ),
+                    );
+                    if (time == null) return;
+                    setDialogState(() {
+                      selectedEndDate = DateTime(
+                        date.year,
+                        date.month,
+                        date.day,
+                        time.hour,
+                        time.minute,
+                      );
+                    });
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'End Date & Time (Optional)',
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          selectedEndDate != null
+                              ? selectedEndDate!
+                                    .toLocal()
+                                    .toString()
+                                    .split('.')[0]
+                                    .substring(0, 16)
+                              : 'Not set (default 1h)',
+                        ),
+                        const Icon(
+                          Icons.event_available,
+                          size: 18,
+                          color: Colors.blue,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    helperText: 'max 250 chars',
+                    counterText: '',
+                  ),
+                  maxLength: 250,
+                  maxLines: 3,
+                ),
+                TextField(
+                  controller: locController,
+                  decoration: const InputDecoration(
+                    labelText: 'Location Name (Optional)',
+                  ),
+                ),
+                TextField(
+                  controller: tagsController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tags (space separated)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Hive.box<DriverEvent>('driver_events').add(
+                  DriverEvent(
+                    date: selectedDate,
+                    type: typeController.text,
+                    description: descController.text,
+                    location: locController.text,
+                    tags: tagsController.text
+                        .split(' ')
+                        .where((t) => t.isNotEmpty)
+                        .toList(),
+                    endDate: selectedEndDate,
+                  ),
+                );
+                Navigator.pop(dialogContext);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('SAVE'),
+            ),
+          ],
+        ),
       ),
     );
   }
