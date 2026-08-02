@@ -46,11 +46,13 @@ class _TimelinePlaceMarker {
 class _TimelineEventMarker {
   final double left;
   final double top;
+  final double width;
   final Color color;
 
   const _TimelineEventMarker({
     required this.left,
     required this.top,
+    required this.width,
     required this.color,
   });
 }
@@ -265,17 +267,33 @@ void _paintTimeline({
   }
 
   for (final marker in renderData.eventMarkers) {
-    canvas.drawLine(
-      Offset(marker.left, 120),
-      Offset(marker.left, 130),
-      Paint()
-        ..color = marker.color.withValues(alpha: 0.5)
-        ..strokeWidth = 2,
-    );
+    final lineTop = marker.top;
+    final lineBottom = marker.top + 10;
+
+    if (marker.width > 2) {
+      canvas.drawRect(
+        Rect.fromLTWH(marker.left, lineTop, marker.width, 2),
+        Paint()
+          ..color = marker.color.withValues(alpha: 0.7)
+          ..strokeWidth = 2,
+      );
+    } else {
+      canvas.drawLine(
+        Offset(marker.left, lineTop),
+        Offset(marker.left, lineBottom),
+        Paint()
+          ..color = marker.color.withValues(alpha: 0.5)
+          ..strokeWidth = 2,
+      );
+    }
+
     final iconPainter = IconPainter(color: marker.color);
+    final iconSize = 20.0;
+    final iconLeft = (marker.left - 10).clamp(0.0, size.width - iconSize);
+    final iconTop = (lineBottom).clamp(0.0, size.height - iconSize);
     canvas.save();
-    canvas.translate(marker.left - 10, 130);
-    iconPainter.paint(canvas, const Size(20, 20));
+    canvas.translate(iconLeft, iconTop);
+    iconPainter.paint(canvas, Size(iconSize, iconSize));
     canvas.restore();
   }
 }
@@ -335,12 +353,34 @@ class IconPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    canvas.drawCircle(
-      Offset(size.width / 2, size.height / 2),
-      size.width * 0.35,
-      paint,
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(0xE23E),
+        style: const TextStyle(
+          fontSize: 20,
+          color: Colors.transparent,
+          fontFamily: 'MaterialIcons',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final offset = Offset(
+      (size.width - textPainter.width) / 2,
+      (size.height - textPainter.height) / 2,
     );
+
+    final textStyle = TextStyle(
+      fontSize: size.width * 0.9,
+      color: color,
+      fontFamily: 'MaterialIcons',
+    );
+    final textPainter2 = TextPainter(
+      text: TextSpan(text: String.fromCharCode(0xE23E), style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    textPainter2.paint(canvas, offset);
   }
 
   @override
@@ -1481,10 +1521,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       brightness: Brightness.light,
     );
 
-    // Target a high width for PDF clarity (e.g. 2400px for 24h)
+    // Target a high width for PDF clarity, with extra vertical room so the
+    // timeline and event markers render more comfortably in exports.
     const double targetHourWidth = 100.0;
     const double targetWidth = targetHourWidth * 24.0;
-    const double targetHeight = 160.0;
+    const double targetHeight = 220.0;
 
     final renderData = _buildTimelineRenderData(
       day: day,
@@ -2229,13 +2270,22 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
 
     for (var event in widget.driverEvents) {
-      if (event.date.isAfter(windowStart) && event.date.isBefore(windowEnd)) {
-        final hour = event.date.difference(windowStart).inSeconds / 3600.0;
+      final eventStart = event.date;
+      final eventEnd = event.endDate ?? event.date;
+
+      if (eventStart.isBefore(windowEnd) && eventEnd.isAfter(windowStart)) {
+        final startHour = eventStart.difference(windowStart).inSeconds / 3600.0;
+        final endHour = eventEnd.difference(windowStart).inSeconds / 3600.0;
+        final left = max(0.0, startHour * hourWidth);
+        final right = min(24.0 * hourWidth, endHour * hourWidth);
+        final width = max(2.0, right - left);
+
         eventMarkers.add(
           _TimelineEventMarker(
-            left: hour * hourWidth,
-            top: 125,
-            color: _getEventColor(event.type),
+            left: left,
+            top: 135,
+            width: width,
+            color: const Color(0xFF4E008A),
           ),
         );
       }
@@ -2252,23 +2302,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       slot2LabelY: 45,
       slot1LabelY: 83,
     );
-  }
-
-  Color _getEventColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'operational events':
-        return Colors.blue;
-      case 'driver observations':
-        return Colors.teal;
-      case 'compliance events':
-        return Colors.red;
-      case 'personal events':
-        return Colors.green;
-      case 'security events':
-        return Colors.orange;
-      default:
-        return Colors.grey;
-    }
   }
 
   String _getCountryCode(int code) {

@@ -7,6 +7,24 @@ import 'pdf_helper.dart';
 import 'event_model.dart';
 
 class TachoPdfGenerator {
+  static pw.Widget _buildSectionHeader(String title, PdfColor color) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(
+            fontSize: 12,
+            fontWeight: pw.FontWeight.bold,
+            color: color,
+          ),
+        ),
+        pw.Divider(thickness: 1, color: color),
+        pw.SizedBox(height: 8),
+      ],
+    );
+  }
+
   static Future<void> exportSummaryReport({
     required List<DailyActivities> days,
     required String title,
@@ -26,7 +44,13 @@ class TachoPdfGenerator {
 
     final summary = ActivitySummary();
     for (var day in days) {
-      final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: !includeManualEntries);
+      final s = calculateDaySummary(
+        day,
+        utcOffset,
+        under50km,
+        days,
+        onlyCard: !includeManualEntries,
+      );
       summary.rest += s.rest;
       summary.availability += s.availability;
       summary.work += s.work;
@@ -157,7 +181,13 @@ class TachoPdfGenerator {
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
             data: days.map((day) {
-              final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: !includeManualEntries);
+              final s = calculateDaySummary(
+                day,
+                utcOffset,
+                under50km,
+                days,
+                onlyCard: !includeManualEntries,
+              );
               return [
                 day.date.toLocal().toString().split(' ').first,
                 formatDur(s.driving),
@@ -169,20 +199,14 @@ class TachoPdfGenerator {
           ),
           if (eventsInPeriod.isNotEmpty) ...[
             pw.SizedBox(height: 20),
+            pw.NewPage(),
+            _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen),
             _buildEventsSection(eventsInPeriod, pdfPrimaryGreen),
           ],
-          if (dailyTimelineImages != null && dailyTimelineImages.isNotEmpty) ...[
+          if (dailyTimelineImages != null &&
+              dailyTimelineImages.isNotEmpty) ...[
             pw.NewPage(),
-            pw.Text(
-              "VISUAL DAILY TIMELINES",
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-                color: pdfPrimaryGreen,
-              ),
-            ),
-            pw.Divider(thickness: 1, color: pdfPrimaryGreen),
-            pw.SizedBox(height: 10),
+            _buildSectionHeader("VISUAL DAILY TIMELINES", pdfPrimaryGreen),
             ...dailyTimelineImages.entries.map((entry) {
               final dateStr = entry.key.toLocal().toString().split(' ').first;
               return pw.Column(
@@ -255,7 +279,12 @@ class TachoPdfGenerator {
         .toList();
     dayEvents.sort((a, b) => b.date.compareTo(a.date));
 
-    final pdfSummary = calculateDaySummary(day, utcOffset, under50km, allActivities);
+    final pdfSummary = calculateDaySummary(
+      day,
+      utcOffset,
+      under50km,
+      allActivities,
+    );
 
     doc.addPage(
       pw.MultiPage(
@@ -369,19 +398,16 @@ class TachoPdfGenerator {
             ),
             pw.Divider(thickness: 1, color: pdfPrimaryGreen),
             pw.SizedBox(height: 10),
-            _buildVerticalPdfTimeline(day, pdfPrimaryGreen, utcOffset, allActivities),
+            _buildVerticalPdfTimeline(
+              day,
+              pdfPrimaryGreen,
+              utcOffset,
+              allActivities,
+            ),
             if (timelineImageBytes != null) ...[
               pw.SizedBox(height: 20),
-              pw.Text(
-                "VISUAL TIMELINE",
-                style: pw.TextStyle(
-                  fontSize: 10,
-                  fontWeight: pw.FontWeight.bold,
-                  color: pdfPrimaryGreen,
-                ),
-              ),
-              pw.Divider(thickness: 1, color: pdfPrimaryGreen),
-              pw.SizedBox(height: 10),
+              pw.NewPage(),
+              _buildSectionHeader("VISUAL TIMELINE", pdfPrimaryGreen),
               pw.Container(
                 width: double.infinity,
                 child: pw.Image(
@@ -392,6 +418,8 @@ class TachoPdfGenerator {
             ],
             if (dayEvents.isNotEmpty) ...[
               pw.SizedBox(height: 20),
+              pw.NewPage(),
+              _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen),
               _buildEventsSection(dayEvents, pdfPrimaryGreen),
             ],
           ];
@@ -540,7 +568,9 @@ class TachoPdfGenerator {
     });
 
     // 2. Define the window boundaries in UTC based on the local offset
-    final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
+    final DateTime windowStart = day.header.time.subtract(
+      Duration(hours: utcOffset),
+    );
     final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
     // 3. Find the active record at the very start of this day
@@ -620,10 +650,7 @@ class TachoPdfGenerator {
                       "${duration ~/ 60}h ${duration % 60}m",
                       style: pw.TextStyle(
                         fontSize: 9,
-                        color: _getActivityPdfColor(
-                          rec.activity,
-                          primary,
-                        ),
+                        color: _getActivityPdfColor(rec.activity, primary),
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
@@ -831,63 +858,120 @@ class TachoPdfGenerator {
 
   static String _getCountryCode(int code) {
     switch (code) {
-      case 1: return "A";
-      case 2: return "AL";
-      case 3: return "AND";
-      case 4: return "ARM";
-      case 5: return "AZ";
-      case 6: return "B";
-      case 7: return "BG";
-      case 8: return "BIH";
-      case 9: return "BY";
-      case 10: return "CH";
-      case 11: return "CY";
-      case 12: return "CZ";
-      case 13: return "D";
-      case 14: return "DK";
-      case 15: return "E";
-      case 16: return "EST";
-      case 17: return "F";
-      case 18: return "FIN";
-      case 19: return "FL";
-      case 20: return "FR";
-      case 21: return "UK";
-      case 22: return "GE";
-      case 23: return "GR";
-      case 24: return "H";
-      case 25: return "HR";
-      case 26: return "I";
-      case 27: return "IRL";
-      case 28: return "IS";
-      case 29: return "KZ";
-      case 30: return "L";
-      case 31: return "LT";
-      case 32: return "LV";
-      case 33: return "M";
-      case 34: return "MC";
-      case 35: return "MD";
-      case 36: return "MK";
-      case 37: return "N";
-      case 38: return "NL";
-      case 39: return "P";
-      case 40: return "PL";
-      case 41: return "RO";
-      case 42: return "RSM";
-      case 43: return "RUS";
-      case 44: return "S";
-      case 45: return "SK";
-      case 46: return "SLO";
-      case 47: return "TM";
-      case 48: return "TR";
-      case 49: return "UA";
-      case 50: return "V";
-      case 51: return "YU";
-      case 52: return "MNE";
-      case 53: return "SRB";
-      case 54: return "UZ";
-      case 253: return "EC";
-      case 254: return "EUR";
-      default: return "??";
+      case 1:
+        return "A";
+      case 2:
+        return "AL";
+      case 3:
+        return "AND";
+      case 4:
+        return "ARM";
+      case 5:
+        return "AZ";
+      case 6:
+        return "B";
+      case 7:
+        return "BG";
+      case 8:
+        return "BIH";
+      case 9:
+        return "BY";
+      case 10:
+        return "CH";
+      case 11:
+        return "CY";
+      case 12:
+        return "CZ";
+      case 13:
+        return "D";
+      case 14:
+        return "DK";
+      case 15:
+        return "E";
+      case 16:
+        return "EST";
+      case 17:
+        return "F";
+      case 18:
+        return "FIN";
+      case 19:
+        return "FL";
+      case 20:
+        return "FR";
+      case 21:
+        return "UK";
+      case 22:
+        return "GE";
+      case 23:
+        return "GR";
+      case 24:
+        return "H";
+      case 25:
+        return "HR";
+      case 26:
+        return "I";
+      case 27:
+        return "IRL";
+      case 28:
+        return "IS";
+      case 29:
+        return "KZ";
+      case 30:
+        return "L";
+      case 31:
+        return "LT";
+      case 32:
+        return "LV";
+      case 33:
+        return "M";
+      case 34:
+        return "MC";
+      case 35:
+        return "MD";
+      case 36:
+        return "MK";
+      case 37:
+        return "N";
+      case 38:
+        return "NL";
+      case 39:
+        return "P";
+      case 40:
+        return "PL";
+      case 41:
+        return "RO";
+      case 42:
+        return "RSM";
+      case 43:
+        return "RUS";
+      case 44:
+        return "S";
+      case 45:
+        return "SK";
+      case 46:
+        return "SLO";
+      case 47:
+        return "TM";
+      case 48:
+        return "TR";
+      case 49:
+        return "UA";
+      case 50:
+        return "V";
+      case 51:
+        return "YU";
+      case 52:
+        return "MNE";
+      case 53:
+        return "SRB";
+      case 54:
+        return "UZ";
+      case 253:
+        return "EC";
+      case 254:
+        return "EUR";
+      default:
+        return "??";
     }
   }
 
@@ -913,7 +997,7 @@ class TachoPdfGenerator {
       for (var act in d.activities) {
         allFlat.add((
           time: d.header.time.add(Duration(minutes: act.time)),
-          rec: act
+          rec: act,
         ));
       }
     }
@@ -926,7 +1010,9 @@ class TachoPdfGenerator {
     });
 
     // 2. Define the window boundaries in UTC based on the local offset
-    final DateTime windowStart = day.header.time.subtract(Duration(hours: utcOffset));
+    final DateTime windowStart = day.header.time.subtract(
+      Duration(hours: utcOffset),
+    );
     final DateTime windowEnd = windowStart.add(const Duration(days: 1));
 
     // 3. Find starting record
@@ -951,10 +1037,18 @@ class TachoPdfGenerator {
       }
 
       switch (rec.activity) {
-        case 0: summary.rest += duration; break;
-        case 1: summary.availability += duration; break;
-        case 2: summary.work += duration; break;
-        case 3: summary.driving += duration; break;
+        case 0:
+          summary.rest += duration;
+          break;
+        case 1:
+          summary.availability += duration;
+          break;
+        case 2:
+          summary.work += duration;
+          break;
+        case 3:
+          summary.driving += duration;
+          break;
       }
     }
 
