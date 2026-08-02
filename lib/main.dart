@@ -1057,11 +1057,11 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Widget _buildTabContent() {
-    switch (_selectedTabIndex) {
-      case 0:
-        return _buildHomeTab();
-      case 1:
-        return LogsView(
+    return IndexedStack(
+      index: _selectedTabIndex,
+      children: [
+        _buildHomeTab(),
+        LogsView(
           vehicles: vehicles,
           places: places,
           vehiclesG2: vehiclesG2,
@@ -1077,9 +1077,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
               _selectedTabIndex = 4; // GNSS Tab
             });
           },
-        );
-      case 2:
-        return ValueListenableBuilder(
+        ),
+        ValueListenableBuilder(
           valueListenable: Hive.box<DriverEvent>('driver_events').listenable(),
           builder: (context, Box<DriverEvent> box, _) {
             return ActivityTimeline(
@@ -1118,9 +1117,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
                   setState(() => _activitiesSubTabIndex = index),
             );
           },
-        );
-      case 3:
-        return FaultsView(
+        ),
+        FaultsView(
           vehicleFaults: vehicleFaults,
           driverEvents: driverEvents,
           detectedEvents: detectedEvents,
@@ -1135,17 +1133,15 @@ class _TahoDashboardState extends State<TahoDashboard> {
               _selectedTabIndex = 2; // Activities Tab
             });
           },
-        );
-      case 4:
-        return OpenStreetMapScreen(
+        ),
+        OpenStreetMapScreen(
           key: ValueKey(_mapInitialCenter),
           records: gnssRecords,
           initialCenter: _mapInitialCenter,
           initialZoom: _mapInitialZoom,
-        );
-      default:
-        return const SizedBox();
-    }
+        ),
+      ],
+    );
   }
 
   Widget _buildHomeTab() {

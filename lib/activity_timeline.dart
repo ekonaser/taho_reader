@@ -588,6 +588,7 @@ Future<Uint8List> _renderTimelinePreviewImage({
   required double targetWidth,
   required double targetHeight,
   required double hourWidth,
+  double pixelRatio = 1.0,
 }) async {
   final renderData = _TimelineRenderData(
     summary: payload.summary,
@@ -661,10 +662,16 @@ Future<Uint8List> _renderTimelinePreviewImage({
   );
 
   final recorder = ui.PictureRecorder();
+  final scaledWidth = targetWidth * pixelRatio;
+  final scaledHeight = targetHeight * pixelRatio;
   final canvas = Canvas(
     recorder,
-    Rect.fromLTWH(0, 0, targetWidth, targetHeight),
+    Rect.fromLTWH(0, 0, scaledWidth, scaledHeight),
   );
+
+  if (pixelRatio != 1.0) {
+    canvas.scale(pixelRatio, pixelRatio);
+  }
 
   canvas.drawRect(
     Rect.fromLTWH(0, 0, targetWidth, targetHeight),
@@ -685,7 +692,7 @@ Future<Uint8List> _renderTimelinePreviewImage({
   );
 
   final picture = recorder.endRecording();
-  final img = await picture.toImage(targetWidth.toInt(), targetHeight.toInt());
+  final img = await picture.toImage(scaledWidth.toInt(), scaledHeight.toInt());
   final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
   return byteData!.buffer.asUint8List();
 }
@@ -1078,7 +1085,8 @@ class ActivityTimeline extends StatefulWidget {
 
 enum _ViewMode { daily, period, monthly }
 
-class _ActivityTimelineState extends State<ActivityTimeline> {
+class _ActivityTimelineState extends State<ActivityTimeline>
+    with AutomaticKeepAliveClientMixin {
   static const Duration _zoomFrameInterval = Duration(milliseconds: 33);
   final ScrollController _contentScrollController = ScrollController();
   double _hourWidth = 120.0;
@@ -1092,6 +1100,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isManualZoom = false;
+  List<({DateTime time, ActivityRecord rec})>? _cachedAllFlat;
+  Future<_TimelineRenderData>? _dailyRenderDataFuture;
+  String? _dailyRenderDataCacheKey;
+  final Map<String, _TimelineRenderData> _dailyRenderDataCache = {};
   final Map<String, Uint8List> _periodPreviewImages = {};
   final Set<String> _periodPreviewLoading = {};
   final Map<String, String> _periodPreviewErrors = {};
@@ -1104,9 +1116,13 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   DateTime? _periodTapGlowDay;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _viewMode = _ViewMode.values[widget.initialViewMode];
+    _rebuildFlatCache();
     if (widget.activities.isNotEmpty) {
       _selectedMonth = DateTime(
         widget.activities.first.date.year,
@@ -1130,6 +1146,19 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   @override
   void didUpdateWidget(covariant ActivityTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (_didActivitiesChange(oldWidget)) {
+      _rebuildFlatCache();
+    }
+
+    // Invalidate daily render cache so it regenerates for changed inputs.
+    _dailyRenderDataCacheKey = null;
+    _dailyRenderDataFuture = null;
+    _dailyRenderDataCache.clear();
+    _cachedTimelinePicture = null;
+    _cachedTimelineKey = null;
+    _cachedTimelineSize = null;
+
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1140,6 +1169,31 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         }
       });
     }
+  }
+
+  bool _didActivitiesChange(ActivityTimeline oldWidget) {
+    return widget.activities != oldWidget.activities ||
+        widget.activities.length != oldWidget.activities.length;
+  }
+
+  void _rebuildFlatCache() {
+    final list = <({DateTime time, ActivityRecord rec})>[];
+    for (var d in widget.activities) {
+      for (var act in d.activities) {
+        list.add((
+          time: d.header.time.add(Duration(minutes: act.time)),
+          rec: act,
+        ));
+      }
+    }
+    list.sort((a, b) {
+      int cmp = a.time.compareTo(b.time);
+      if (cmp != 0) return cmp;
+      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
+      return b.rec.slot.compareTo(a.rec.slot);
+    });
+    _cachedAllFlat = list;
   }
 
   void _preloadPeriodPreviews({List<DailyActivities>? days}) {
@@ -1308,8 +1362,155 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     }
   }
 
+  _TimelineRenderData _timelineRenderDataFromPayload(
+    _TimelineRenderDataPayload payload,
+  ) {
+    return _TimelineRenderData(
+      summary: payload.summary,
+      blocks: payload.blocks
+          .map(
+            (block) => _TimelineBlock(
+              left: block.left,
+              top: block.top,
+              width: block.width,
+              height: block.height,
+              color: block.colorValue == 0
+                  ? Colors.transparent
+                  : Color(block.colorValue),
+              isCrewLine: block.isCrewLine,
+              durationMinutes: block.durationMinutes,
+            ),
+          )
+          .toList(),
+      crewLines: payload.crewLines
+          .map(
+            (block) => _TimelineBlock(
+              left: block.left,
+              top: block.top,
+              width: block.width,
+              height: block.height,
+              color: block.colorValue == 0
+                  ? Colors.transparent
+                  : Color(block.colorValue),
+              isCrewLine: block.isCrewLine,
+              durationMinutes: block.durationMinutes,
+            ),
+          )
+          .toList(),
+      placeMarkers: payload.placeMarkers
+          .map(
+            (marker) => _TimelinePlaceMarker(
+              left: marker.left,
+              top: marker.top,
+              country: marker.country,
+              color: marker.colorValue == 0
+                  ? Colors.transparent
+                  : Color(marker.colorValue),
+              type: marker.type,
+            ),
+          )
+          .toList(),
+      eventMarkers: payload.eventMarkers
+          .map(
+            (marker) => _TimelineEventMarker(
+              left: marker.left,
+              top: marker.top,
+              width: marker.width,
+              color: marker.colorValue == 0
+                  ? Colors.transparent
+                  : Color(marker.colorValue),
+            ),
+          )
+          .toList(),
+      minuteMarkers: payload.minuteMarkers
+          .map(
+            (marker) => _TimelineMinuteMarker(
+              left: marker.left,
+              showLabel: marker.showLabel,
+              label: marker.label,
+            ),
+          )
+          .toList(),
+      separatorY: payload.separatorY,
+      slot2LabelY: payload.slot2LabelY,
+      slot1LabelY: payload.slot1LabelY,
+    );
+  }
+
+  Future<_TimelineRenderData> _buildDailyRenderDataInIsolate({
+    required DailyActivities day,
+    required double hourWidth,
+    required Color primaryGreen,
+  }) async {
+    final payload = await _buildTimelineRenderDataPayloadInIsolate(
+      day: day,
+      activities: widget.activities,
+      places: widget.places,
+      placesG2: widget.placesG2,
+      driverEvents: widget.driverEvents,
+      utcOffset: widget.utcOffset,
+      under50km: widget.under50km,
+      includeManualInSummary: widget.includeManualInSummary,
+      hourWidth: hourWidth,
+      primaryGreenValue: primaryGreen.value,
+    );
+
+    return _timelineRenderDataFromPayload(payload);
+  }
+
+  Future<_TimelineRenderData> _getOrCreateDailyRenderDataFuture({
+    required DailyActivities day,
+    required double hourWidth,
+    required Color primaryGreen,
+  }) {
+    final key = _buildDailyRenderDataKey(
+      day: day,
+      hourWidth: hourWidth,
+      primaryGreen: primaryGreen,
+    );
+
+    final cached = _dailyRenderDataCache[key];
+    if (cached != null) {
+      return Future.value(cached);
+    }
+
+    if (_dailyRenderDataFuture != null && _dailyRenderDataCacheKey == key) {
+      return _dailyRenderDataFuture!;
+    }
+
+    _dailyRenderDataCacheKey = key;
+    _dailyRenderDataFuture =
+        _buildDailyRenderDataInIsolate(
+          day: day,
+          hourWidth: hourWidth,
+          primaryGreen: primaryGreen,
+        ).then((result) {
+          _dailyRenderDataCache[key] = result;
+          if (_dailyRenderDataCache.length > 18) {
+            _dailyRenderDataCache.remove(_dailyRenderDataCache.keys.first);
+          }
+          return result;
+        });
+    return _dailyRenderDataFuture!;
+  }
+
+  String _buildDailyRenderDataKey({
+    required DailyActivities day,
+    required double hourWidth,
+    required Color primaryGreen,
+  }) {
+    final eventMarkersSignature = widget.driverEvents
+        .map(
+          (event) =>
+              '${event.date.toIso8601String()}-${event.endDate?.toIso8601String() ?? ''}-${event.type}-${event.description}',
+        )
+        .join('|');
+    return '${day.date.toIso8601String()}|${hourWidth.toStringAsFixed(2)}|${widget.utcOffset}|${widget.under50km}|${widget.includeManualInSummary}|${primaryGreen.value}|$eventMarkersSignature';
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final primaryGreen = theme.primaryColor;
@@ -1516,63 +1717,24 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
             ? max(_hourWidth, fitWidth)
             : fitWidth;
 
-        // CRITICAL: Re-calculate render data based on the effective scale
-        final renderData = _buildTimelineRenderData(
-          day: day,
-          primaryGreen: primaryGreen,
-          colorScheme: colorScheme,
-          hourWidth: effectiveHourWidth,
-        );
-
-        // Update summary for legend
-        _summary.reset();
-        _summary.rest = renderData.summary.rest;
-        _summary.availability = renderData.summary.availability;
-        _summary.work = renderData.summary.work;
-        _summary.driving = renderData.summary.driving;
-        _summary.overdrive = renderData.summary.overdrive;
-        _summary.totalKm = renderData.summary.totalKm;
-
-        final separatorY = renderData.separatorY;
+        final separatorY = 79.5;
         final labelOffset = 18.0;
         final slot2Top = separatorY - labelOffset - 8 * 2;
         final slot1Top = separatorY + labelOffset - 8;
-        final pictureSize = Size(
-          max(effectiveHourWidth * 24, timelineWidth - 32),
-          timelineHeight,
-        );
-
-        final eventMarkersSignature = renderData.eventMarkers
-            .map(
-              (marker) =>
-                  '${marker.left.toStringAsFixed(2)}-${marker.width.toStringAsFixed(2)}',
-            )
-            .join('|');
-
-        final timelineCacheKey =
-            '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}-${eventMarkersSignature}';
-
-        if (_cachedTimelinePicture == null ||
-            _cachedTimelineKey != timelineCacheKey ||
-            _cachedTimelineSize != pictureSize) {
-          final recorder = ui.PictureRecorder();
-          final pictureCanvas = Canvas(
-            recorder,
-            Rect.fromLTWH(0, 0, pictureSize.width, pictureSize.height),
-          );
-          _paintTimeline(
-            canvas: pictureCanvas,
-            size: pictureSize,
-            hourWidth: effectiveHourWidth,
-            contentStartX: contentStartX,
-            colorScheme: colorScheme,
-            primaryGreen: primaryGreen,
-            renderData: renderData,
-          );
-          _cachedTimelinePicture = recorder.endRecording();
-          _cachedTimelineKey = timelineCacheKey;
-          _cachedTimelineSize = pictureSize;
-        }
+        final dailyRenderDataKey = _viewMode == _ViewMode.daily
+            ? _buildDailyRenderDataKey(
+                day: day,
+                hourWidth: effectiveHourWidth,
+                primaryGreen: primaryGreen,
+              )
+            : '';
+        final dailyRenderDataFuture = _viewMode == _ViewMode.daily
+            ? _getOrCreateDailyRenderDataFuture(
+                day: day,
+                hourWidth: effectiveHourWidth,
+                primaryGreen: primaryGreen,
+              )
+            : null;
 
         return SingleChildScrollView(
           controller: _contentScrollController,
@@ -1628,80 +1790,159 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  child: SizedBox(
-                    width: timelineWidth,
-                    height: timelineHeight,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          width: 26,
-                          height: timelineHeight,
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                top: slot2Top,
-                                child: RotatedBox(
-                                  quarterTurns: 3,
-                                  child: Text(
-                                    'SLOT 2',
-                                    style: TextStyle(
-                                      fontSize: 7,
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: slot1Top,
-                                child: RotatedBox(
-                                  quarterTurns: 3,
-                                  child: Text(
-                                    'SLOT 1',
-                                    style: TextStyle(
-                                      fontSize: 7,
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                FutureBuilder<_TimelineRenderData>(
+                  future: dailyRenderDataFuture,
+                  builder: (context, snapshot) {
+                    final renderData =
+                        snapshot.data ??
+                        _dailyRenderDataCache[dailyRenderDataKey];
+
+                    if (renderData != null) {
+                      _summary.reset();
+                      _summary.rest = renderData.summary.rest;
+                      _summary.availability = renderData.summary.availability;
+                      _summary.work = renderData.summary.work;
+                      _summary.driving = renderData.summary.driving;
+                      _summary.overdrive = renderData.summary.overdrive;
+                      _summary.totalKm = renderData.summary.totalKm;
+                    }
+
+                    final pictureSize = Size(
+                      max(effectiveHourWidth * 24, timelineWidth - 32),
+                      timelineHeight,
+                    );
+
+                    if (renderData != null) {
+                      final eventMarkersSignature = renderData.eventMarkers
+                          .map(
+                            (marker) =>
+                                '${marker.left.toStringAsFixed(2)}-${marker.width.toStringAsFixed(2)}',
+                          )
+                          .join('|');
+
+                      final timelineCacheKey =
+                          '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}-${eventMarkersSignature}-${renderData.hashCode}';
+
+                      if (_cachedTimelinePicture == null ||
+                          _cachedTimelineKey != timelineCacheKey ||
+                          _cachedTimelineSize != pictureSize) {
+                        final recorder = ui.PictureRecorder();
+                        final pictureCanvas = Canvas(
+                          recorder,
+                          Rect.fromLTWH(
+                            0,
+                            0,
+                            pictureSize.width,
+                            pictureSize.height,
                           ),
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
-                            child: Container(
-                              width: max(
-                                effectiveHourWidth * 24,
-                                timelineWidth - 32,
-                              ),
-                              height: timelineHeight,
-                              color: Colors.transparent,
-                              child: CustomPaint(
-                                size: pictureSize,
-                                painter: _TimelinePainter(
-                                  hourWidth: effectiveHourWidth,
-                                  contentStartX: contentStartX,
-                                  colorScheme: colorScheme,
-                                  primaryGreen: primaryGreen,
-                                  renderData: renderData,
-                                  cachedPicture: _cachedTimelinePicture,
-                                  cachedSize: pictureSize,
+                        );
+                        _paintTimeline(
+                          canvas: pictureCanvas,
+                          size: pictureSize,
+                          hourWidth: effectiveHourWidth,
+                          contentStartX: contentStartX,
+                          colorScheme: colorScheme,
+                          primaryGreen: primaryGreen,
+                          renderData: renderData,
+                        );
+                        _cachedTimelinePicture = recorder.endRecording();
+                        _cachedTimelineKey = timelineCacheKey;
+                        _cachedTimelineSize = pictureSize;
+                      }
+                    }
+
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          child: SizedBox(
+                            width: timelineWidth,
+                            height: timelineHeight,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  width: 26,
+                                  height: timelineHeight,
+                                  child: Stack(
+                                    children: [
+                                      Positioned(
+                                        top: slot2Top,
+                                        child: RotatedBox(
+                                          quarterTurns: 3,
+                                          child: Text(
+                                            'SLOT 2',
+                                            style: TextStyle(
+                                              fontSize: 7,
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: slot1Top,
+                                        child: RotatedBox(
+                                          quarterTurns: 3,
+                                          child: Text(
+                                            'SLOT 1',
+                                            style: TextStyle(
+                                              fontSize: 7,
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: renderData != null
+                                      ? SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          physics:
+                                              const ClampingScrollPhysics(),
+                                          child: Container(
+                                            width: max(
+                                              effectiveHourWidth * 24,
+                                              timelineWidth - 32,
+                                            ),
+                                            height: timelineHeight,
+                                            color: Colors.transparent,
+                                            child: RepaintBoundary(
+                                              child: CustomPaint(
+                                                size: pictureSize,
+                                                painter: _TimelinePainter(
+                                                  hourWidth: effectiveHourWidth,
+                                                  contentStartX: contentStartX,
+                                                  colorScheme: colorScheme,
+                                                  primaryGreen: primaryGreen,
+                                                  renderData: renderData,
+                                                  cachedPicture:
+                                                      _cachedTimelinePicture,
+                                                  cachedSize: pictureSize,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : const Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                        if (renderData != null)
+                          _buildLegend(primaryGreen, _summary),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -1754,7 +1995,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                 ),
                 const Divider(),
-                _buildLegend(primaryGreen, _summary),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Column(
@@ -1854,6 +2094,16 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 ),
                 _buildSummaryContent(_calculateRangeSummary(), primaryGreen),
                 const SizedBox(height: 32),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    "Activity Statistics",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildVisualBreakdown(primaryGreen, _calculateRangeSummary()),
+                const SizedBox(height: 24),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
@@ -1867,16 +2117,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 ),
                 const SizedBox(height: 12),
                 ..._buildPeriodPreviewCards(periodDays, primaryGreen),
-                const SizedBox(height: 24),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    "Activity Statistics",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildVisualBreakdown(primaryGreen, _calculateRangeSummary()),
               ] else ...[
                 // Monthly View
                 _buildSummaryHeader(
@@ -2187,25 +2427,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       summary.totalKm += day.header.km;
     }
 
-    // 2. Flatten all activities from all days for context
-    List<({DateTime time, ActivityRecord rec})> allFlat = [];
-    for (var day in widget.activities) {
-      for (var act in day.activities) {
-        final absTime = day.header.time.add(Duration(minutes: act.time));
-        allFlat.add((time: absTime, rec: act));
-      }
-    }
-
-    if (allFlat.isEmpty) return summary;
-
-    // Sort by absolute time
-    allFlat.sort((a, b) {
-      int cmp = a.time.compareTo(b.time);
-      if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
-      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
-      return b.rec.slot.compareTo(a.rec.slot);
-    });
+    final allFlat = _cachedAllFlat;
+    if (allFlat == null || allFlat.isEmpty) return summary;
 
     // 3. Define the period boundaries in Local Time
     var sortedFiltered = List<DailyActivities>.from(filteredDays);
@@ -2857,23 +3080,8 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   List<Widget> _buildActivityLog(DailyActivities day, Color primaryGreen) {
     List<Widget> items = [];
 
-    // 1. Flatten all activities from all days for context
-    List<({DateTime time, ActivityRecord rec})> allFlat = [];
-    for (var d in widget.activities) {
-      for (var act in d.activities) {
-        allFlat.add((
-          time: d.header.time.add(Duration(minutes: act.time)),
-          rec: act,
-        ));
-      }
-    }
-    allFlat.sort((a, b) {
-      int cmp = a.time.compareTo(b.time);
-      if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
-      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
-      return b.rec.slot.compareTo(a.rec.slot);
-    });
+    final allFlat = _cachedAllFlat;
+    if (allFlat == null || allFlat.isEmpty) return items;
 
     // 2. Define the window boundaries in UTC based on the local offset
     final DateTime windowStart = day.header.time.subtract(
@@ -3351,22 +3559,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     final eventMarkers = <_TimelineEventMarker>[];
     final minuteMarkers = <_TimelineMinuteMarker>[];
 
-    List<({DateTime time, ActivityRecord rec})> allFlat = [];
-    for (var d in widget.activities) {
-      for (var act in d.activities) {
-        allFlat.add((
-          time: d.header.time.add(Duration(minutes: act.time)),
-          rec: act,
-        ));
-      }
+    final allFlat = _cachedAllFlat;
+    if (allFlat == null || allFlat.isEmpty) {
+      return _TimelineRenderData(
+        summary: summary,
+        blocks: blocks,
+        crewLines: crewLines,
+        placeMarkers: placeMarkers,
+        eventMarkers: eventMarkers,
+        minuteMarkers: minuteMarkers,
+        separatorY: 79.5,
+        slot2LabelY: 45,
+        slot1LabelY: 83,
+      );
     }
-    allFlat.sort((a, b) {
-      int cmp = a.time.compareTo(b.time);
-      if (cmp != 0) return cmp;
-      if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
-      if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
-      return b.rec.slot.compareTo(a.rec.slot);
-    });
 
     final DateTime windowStart = day.header.time.subtract(
       Duration(hours: widget.utcOffset),
