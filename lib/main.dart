@@ -46,44 +46,46 @@ class TahoApp extends StatelessWidget {
         statusBarIconBrightness: Brightness.light,
         systemNavigationBarColor: Color(0xFF28B52F), // Iska zelena
         systemNavigationBarIconBrightness: Brightness.dark,
-        systemNavigationBarDividerColor: Color(0xFF28B52F), // Odstrani ločilno črto
+        systemNavigationBarDividerColor: Color(
+          0xFF28B52F,
+        ), // Odstrani ločilno črto
         systemNavigationBarContrastEnforced: false, // Prepreči "scrim" (sivino)
       ),
       child: MaterialApp(
         title: 'Tacho Reader',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.system,
-      theme: ThemeData(
-        useMaterial3: true,
-        primaryColor: const Color(0xFF28B52F),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF28B52F),
-          primary: const Color(0xFF28B52F),
-          surface: Colors.white,
+        theme: ThemeData(
+          useMaterial3: true,
+          primaryColor: const Color(0xFF28B52F),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF28B52F),
+            primary: const Color(0xFF28B52F),
+            surface: Colors.white,
+          ),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFF28B52F),
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF28B52F),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        primaryColor: const Color(0xFF28B52F),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF28B52F),
+        darkTheme: ThemeData(
+          useMaterial3: true,
           brightness: Brightness.dark,
-          primary: const Color(0xFF28B52F),
-          surface: const Color(0xFF121212),
+          primaryColor: const Color(0xFF28B52F),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF28B52F),
+            brightness: Brightness.dark,
+            primary: const Color(0xFF28B52F),
+            surface: const Color(0xFF121212),
+          ),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFF1E1E1E),
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-      home: const TahoDashboard(),
+        home: const TahoDashboard(),
       ),
     );
   }
@@ -113,6 +115,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
   TahoGen1Card? gen1Card;
   bool _isGen2View = false;
   bool _under50km = false;
+  bool _includeManualInSummary = false;
   DateTime? _selectedActivityDate;
   bool isLoading = false;
   double _loadingProgress = 0.0;
@@ -140,6 +143,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
     setState(() {
       _isGen2View = prefs.getBool('isGen2View') ?? false;
       _under50km = prefs.getBool('under50km') ?? false;
+      _includeManualInSummary =
+          prefs.getBool('includeManualInSummary') ?? false;
       _utcOffset = prefs.getInt('utcOffset') ?? 0;
     });
     if (gen1Card != null || gen2Card != null) {
@@ -166,14 +171,22 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       if (_isGen2View) {
         if (gen2Card != null) {
-          cardId = gen2Card!.idData.isNotEmpty ? parserG2.parseCardId(gen2Card!.idData) : null;
-          driverLicense = gen2Card!.driverLicenseDATAptr.isNotEmpty ? parserG2.parseDriverLicense(gen2Card!.driverLicenseDATAptr) : null;
-          lastDownload = gen2Card!.cardDownload.isNotEmpty ? parserG2.parseLastDownload(gen2Card!.cardDownload) : null;
-          activities = gen2Card!.activitiesDATAptr.isNotEmpty ? parserG2.parseActivities(gen2Card!.activitiesDATAptr) : [];
+          cardId = gen2Card!.idData.isNotEmpty
+              ? parserG2.parseCardId(gen2Card!.idData)
+              : null;
+          driverLicense = gen2Card!.driverLicenseDATAptr.isNotEmpty
+              ? parserG2.parseDriverLicense(gen2Card!.driverLicenseDATAptr)
+              : null;
+          lastDownload = gen2Card!.cardDownload.isNotEmpty
+              ? parserG2.parseLastDownload(gen2Card!.cardDownload)
+              : null;
+          activities = gen2Card!.activitiesDATAptr.isNotEmpty
+              ? parserG2.parseActivities(gen2Card!.activitiesDATAptr)
+              : [];
           activities.sort((a, b) => b.date.compareTo(a.date));
           gnssRecords = parserG2.parseGnss(gen2Card!.GNSS);
           vehicleFaults = parserG2.parseFaults(gen2Card!.faultsData); // 0503
-          driverEvents = parserG2.parseFaults(gen2Card!.eventsData);   // 0502
+          driverEvents = parserG2.parseFaults(gen2Card!.eventsData); // 0502
           vehiclesG2 = parserG2.parseVehiclesG2(gen2Card!.vehiclesDATAptr);
           placesG2 = parserG2.parsePlacesG2(gen2Card!.places);
           vehicles = [];
@@ -195,14 +208,16 @@ class _TahoDashboardState extends State<TahoDashboard> {
       } else {
         if (gen1Card != null) {
           cardId = parser.parseCardId(gen1Card!.idData);
-          driverLicense = parser.parseDriverLicense(gen1Card!.driverLicenseDATAptr);
+          driverLicense = parser.parseDriverLicense(
+            gen1Card!.driverLicenseDATAptr,
+          );
           lastDownload = parser.parseLastDownload(gen1Card!.cardDownload);
           vehicles = parser.parseVehicles(gen1Card!.vehiclesDATAptr);
           places = parser.parsePlaces(gen1Card!.places);
           activities = parser.parseActivities(gen1Card!.activitiesDATAptr);
           activities.sort((a, b) => b.date.compareTo(a.date));
           vehicleFaults = parser.parseFaults(gen1Card!.faultsData); // 0503
-          driverEvents = parser.parseFaults(gen1Card!.eventsData);   // 0502
+          driverEvents = parser.parseFaults(gen1Card!.eventsData); // 0502
           gnssRecords = [];
           vehiclesG2 = [];
           placesG2 = [];
@@ -249,28 +264,34 @@ class _TahoDashboardState extends State<TahoDashboard> {
         hasFirstBreakPart = false;
       }
 
-      if (prev.activity == 0 || prev.activity == 1) { // Rest or Availability
+      if (prev.activity == 0 || prev.activity == 1) {
+        // Rest or Availability
         if (duration >= 45 || (duration >= 30 && hasFirstBreakPart)) {
           accumulatedDriving = 0;
           hasFirstBreakPart = false;
         } else if (duration >= 15 && !hasFirstBreakPart) {
           hasFirstBreakPart = true;
         }
-      } else if (prev.activity == 3) { // Driving
+      } else if (prev.activity == 3) {
+        // Driving
         int oldAccumulated = accumulatedDriving;
         accumulatedDriving += duration;
         if (accumulatedDriving > 270) {
           int startOfOverdriveInThisSegment = max(0, 270 - oldAccumulated);
-          final begin = day.date.add(Duration(minutes: prev.time + startOfOverdriveInThisSegment));
+          final begin = day.date.add(
+            Duration(minutes: prev.time + startOfOverdriveInThisSegment),
+          );
           final end = day.date.add(Duration(minutes: curr.time));
 
-          detectedEvents.add(TahoFault(
-            type: 0xFF, // Custom Overdrive type
-            beginTime: begin,
-            endTime: end,
-            vehicleRegistrationNation: 0,
-            vehicleRegistrationNumber: "Detected",
-          ));
+          detectedEvents.add(
+            TahoFault(
+              type: 0xFF, // Custom Overdrive type
+              beginTime: begin,
+              endTime: end,
+              vehicleRegistrationNation: 0,
+              vehicleRegistrationNumber: "Detected",
+            ),
+          );
           accumulatedDriving = 270;
         }
       }
@@ -287,7 +308,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
       int len = (bytes[i + 3] << 8) | bytes[i + 4];
 
       if (i + 5 + len <= bytes.length) {
-        String key = "${b1.toRadixString(16).padLeft(2, '0')}${b2.toRadixString(16).padLeft(2, '0')}_$gen";
+        String key =
+            "${b1.toRadixString(16).padLeft(2, '0')}${b2.toRadixString(16).padLeft(2, '0')}_$gen";
         sections[key] = bytes.sublist(i + 5, i + 5 + len);
         i += 5 + len;
       } else {
@@ -361,7 +383,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
     } catch (e) {
       setState(() => isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -385,7 +409,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       setState(() => _loadingStatus = "Connecting to reader...");
       if (!await _tahoReader.init()) throw 'USB reader not available';
-      
+
       setState(() => _loadingStatus = "Resetting card...");
       await _tahoReader.getATR();
 
@@ -428,11 +452,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
       _updateParsedData();
       _saveToArchive();
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
@@ -454,70 +480,116 @@ class _TahoDashboardState extends State<TahoDashboard> {
       }
     }
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x02]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x02]),
+    );
     update(0, "Reading ICC (Gen 1)...");
     final iccData = await _tahoReader.readData(25);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x05]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x00, 0x05]),
+    );
     update(25, "Reading IC (Gen 1)...");
     final icData = await _tahoReader.readData(8);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x54, 0x41, 0x43, 0x48, 0x4F]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([
+        0x00,
+        0xA4,
+        0x04,
+        0x0C,
+        0x06,
+        0xFF,
+        0x54,
+        0x41,
+        0x43,
+        0x48,
+        0x4F,
+      ]),
+    );
     update(8, "Selecting Tacho App...");
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]),
+    );
     update(0, "Reading Card Certificate...");
     final cardCert = await _tahoReader.readData(194);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]),
+    );
     update(194, "Reading CA Certificate...");
     final caCert = await _tahoReader.readData(194);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]),
+    );
     update(194, "Reading Identification...");
     final idData = await _tahoReader.readData(143);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]),
+    );
     update(143, "Reading Driver License...");
     final license = await _tahoReader.readData(53);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]),
+    );
     update(53, "Reading Activities...");
     final activities = await _tahoReader.readData(13780);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]),
+    );
     update(13780, "Reading Vehicles Used...");
     final vehicles = await _tahoReader.readData(6202);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]),
+    );
     update(6202, "Reading App Identification...");
     final appId = await _tahoReader.readData(10);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]),
+    );
     update(10, "Reading Download Status...");
     final download = await _tahoReader.readData(4);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]),
+    );
     update(4, "Reading Events...");
     final events = await _tahoReader.readData(1728);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]),
+    );
     update(1728, "Reading Faults...");
     final faults = await _tahoReader.readData(1152);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]),
+    );
     update(1152, "Reading Places...");
     final places = await _tahoReader.readData(1121);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]),
+    );
     update(1121, "Reading Current Usage...");
     final usage = await _tahoReader.readData(19);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]),
+    );
     update(19, "Reading Control Activity...");
     final control = await _tahoReader.readData(46);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]),
+    );
     update(46, "Reading Specific Conditions...");
     final conditions = await _tahoReader.readData(280);
     update(280, "Gen 1 Reading Complete");
@@ -557,82 +629,132 @@ class _TahoDashboardState extends State<TahoDashboard> {
     }
 
     // selecting SMRDT app
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x04, 0x0C, 0x06, 0xFF, 0x53, 0x4D, 0x52, 0x44, 0x54]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([
+        0x00,
+        0xA4,
+        0x04,
+        0x0C,
+        0x06,
+        0xFF,
+        0x53,
+        0x4D,
+        0x52,
+        0x44,
+        0x54,
+      ]),
+    );
     update(0, "Selecting Gen 2 App...");
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x01]),
+    );
     update(0, "Reading App ID (Gen 2)...");
     final appId = await _tahoReader.readData(15);
 
     // CardMA Certificate
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x00]),
+    );
     update(15, "Reading Card MA Cert...");
     final cardCert = await _tahoReader.readData(205);
 
     // Card Sign Certificate
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x01]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x01]),
+    );
     update(205, "Reading Card Sign Cert...");
     final cardSignCert = await _tahoReader.readData(205);
 
     // CA Certificate
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x08]),
+    );
     update(205, "Reading CA Cert (G2)...");
     final caCert = await _tahoReader.readData(205);
 
     // Link Certificate
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x09]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0xC1, 0x09]),
+    );
     update(205, "Reading Link Cert...");
     final linkCert = await _tahoReader.readData(205);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x20]),
+    );
     update(205, "Reading Identification (G2)...");
     final idData = await _tahoReader.readData(143);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x0E]),
+    );
     update(143, "Reading Download Status (G2)...");
     final download = await _tahoReader.readData(4);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x21]),
+    );
     update(4, "Reading Driver License (G2)...");
     final license = await _tahoReader.readData(53);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x02]),
+    );
     update(53, "Reading Events (G2)...");
     final events = await _tahoReader.readData(3168);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x03]),
+    );
     update(3168, "Reading Faults (G2)...");
     final faults = await _tahoReader.readData(1152);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x04]),
+    );
     update(1152, "Reading Activities (G2)...");
     final activities = await _tahoReader.readData(13780);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x05]),
+    );
     update(13780, "Reading Vehicles Used (G2)...");
     final vehicles = await _tahoReader.readData(9602);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x06]),
+    );
     update(9602, "Reading Places (G2)...");
     final places = await _tahoReader.readData(2354);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x07]),
+    );
     update(2354, "Reading Current Usage (G2)...");
     final usage = await _tahoReader.readData(19);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x08]),
+    );
     update(19, "Reading Control Activity (G2)...");
     final control = await _tahoReader.readData(46);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x22]),
+    );
     update(46, "Reading Specific Conditions (G2)...");
     final conditions = await _tahoReader.readData(562);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x23]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x23]),
+    );
     update(562, "Reading Vehicles Units (G2)...");
     final units = await _tahoReader.readData(2002);
 
-    await _tahoReader.selectFile(Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x24]));
+    await _tahoReader.selectFile(
+      Uint8List.fromList([0x00, 0xA4, 0x02, 0x0C, 0x02, 0x05, 0x24]),
+    );
     update(2002, "Reading GNSS Records...");
     final gnssData = await _tahoReader.readData(5042);
     update(5042, "Gen 2 Reading Complete");
@@ -672,12 +794,20 @@ class _TahoDashboardState extends State<TahoDashboard> {
       firstDate: firstDate,
       lastDate: lastDate,
       selectableDayPredicate: (day) {
-        return activities.any((a) =>
-        a.date.year == day.year && a.date.month == day.month && a.date.day == day.day);
+        return activities.any(
+          (a) =>
+              a.date.year == day.year &&
+              a.date.month == day.month &&
+              a.date.day == day.day,
+        );
       },
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: primaryGreen, onPrimary: Colors.white, onSurface: Colors.black),
+          colorScheme: const ColorScheme.light(
+            primary: primaryGreen,
+            onPrimary: Colors.white,
+            onSurface: Colors.black,
+          ),
         ),
         child: child!,
       ),
@@ -697,10 +827,12 @@ class _TahoDashboardState extends State<TahoDashboard> {
 
     // Find current index
     DateTime current = _selectedActivityDate ?? sortedActivities.first.date;
-    int index = sortedActivities.indexWhere((a) =>
-    a.date.year == current.year &&
-        a.date.month == current.month &&
-        a.date.day == current.day);
+    int index = sortedActivities.indexWhere(
+      (a) =>
+          a.date.year == current.year &&
+          a.date.month == current.month &&
+          a.date.day == current.day,
+    );
 
     if (index == -1) index = 0;
 
@@ -738,7 +870,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
   void _saveToDdd() {
     if (cardId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No card data to save. Please read a card first.')),
+        const SnackBar(
+          content: Text('No card data to save. Please read a card first.'),
+        ),
       );
       return;
     }
@@ -752,7 +886,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
   void _shareDdd() {
     if (cardId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No card data to share. Please read a card first.')),
+        const SnackBar(
+          content: Text('No card data to share. Please read a card first.'),
+        ),
       );
       return;
     }
@@ -775,17 +911,27 @@ class _TahoDashboardState extends State<TahoDashboard> {
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) async {
         if (didPop) return;
-        final bool shouldPop = await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Exit'),
-            content: const Text('Are you sure you want to exit? All unsaved data will be lost.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('NO')),
-              TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('YES')),
-            ],
-          ),
-        ) ?? false;
+        final bool shouldPop =
+            await showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Exit'),
+                content: const Text(
+                  'Are you sure you want to exit? All unsaved data will be lost.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('NO'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('YES'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
         if (shouldPop && context.mounted) {
           SystemNavigator.pop();
         }
@@ -827,28 +973,35 @@ class _TahoDashboardState extends State<TahoDashboard> {
         ),
         body: isLoading
             ? Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(
-                value: _loadingProgress > 0 ? _loadingProgress : null,
-                color: primaryGreen,
-                strokeWidth: 6,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "${(_loadingProgress * 100).toInt()}%",
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryGreen),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _loadingStatus,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-        )
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      value: _loadingProgress > 0 ? _loadingProgress : null,
+                      color: primaryGreen,
+                      strokeWidth: 6,
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      "${(_loadingProgress * 100).toInt()}%",
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _loadingStatus,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              )
             : _buildTabContent(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedTabIndex,
@@ -868,8 +1021,14 @@ class _TahoDashboardState extends State<TahoDashboard> {
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Logs'),
-            BottomNavigationBarItem(icon: Icon(Icons.timeline), label: 'Activities'),
-            BottomNavigationBarItem(icon: Icon(Icons.warning_amber), label: 'Faults'),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.timeline),
+              label: 'Activities',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.warning_amber),
+              label: 'Faults',
+            ),
             BottomNavigationBarItem(icon: Icon(Icons.map), label: 'GNSS'),
           ],
         ),
@@ -909,7 +1068,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           placesG2: placesG2,
           gnssRecords: gnssRecords,
           initialViewMode: _logsSubTabIndex,
-          onViewModeChanged: (index) => setState(() => _logsSubTabIndex = index),
+          onViewModeChanged: (index) =>
+              setState(() => _logsSubTabIndex = index),
           onJumpToMap: (lat, lon) {
             setState(() {
               _mapInitialCenter = LatLng(lat, lon);
@@ -936,6 +1096,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
               onPrevDay: () => _jumpToActivityDay(1), // Older
               onNextDay: () => _jumpToActivityDay(-1), // Newer
               under50km: _under50km,
+              includeManualInSummary: _includeManualInSummary,
               places: places,
               placesG2: placesG2,
               driverEvents: box.values.toList(),
@@ -943,7 +1104,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
               vehiclesG2: vehiclesG2,
               isGen2View: _isGen2View,
               initialViewMode: _activitiesSubTabIndex,
-              onViewModeChanged: (index) => setState(() => _activitiesSubTabIndex = index),
+              onViewModeChanged: (index) =>
+                  setState(() => _activitiesSubTabIndex = index),
             );
           },
         );
@@ -953,7 +1115,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           driverEvents: driverEvents,
           detectedEvents: detectedEvents,
           initialViewMode: _faultsSubTabIndex,
-          onViewModeChanged: (index) => setState(() => _faultsSubTabIndex = index),
+          onViewModeChanged: (index) =>
+              setState(() => _faultsSubTabIndex = index),
           onNavigateToDay: (date) {
             setState(() {
               // Normalize to start of day to match Activities logic
@@ -969,7 +1132,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
           initialCenter: _mapInitialCenter,
           initialZoom: _mapInitialZoom,
         );
-      default: return const SizedBox();
+      default:
+        return const SizedBox();
     }
   }
 
@@ -1023,7 +1187,9 @@ class _TahoDashboardState extends State<TahoDashboard> {
           ),
         ),
         Expanded(
-          child: _homeSubTabIndex == 0 ? _buildCardIdView() : _buildArchiveView(),
+          child: _homeSubTabIndex == 0
+              ? _buildCardIdView()
+              : _buildArchiveView(),
         ),
       ],
     );
@@ -1042,8 +1208,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryGreen,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -1054,8 +1225,13 @@ class _TahoDashboardState extends State<TahoDashboard> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryGreen,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ],
@@ -1068,7 +1244,10 @@ class _TahoDashboardState extends State<TahoDashboard> {
   void _saveToArchive() async {
     if (cardId == null) return;
 
-    final bytes = TahoExporter().buildBytes(gen1Card: gen1Card, gen2Card: gen2Card);
+    final bytes = TahoExporter().buildBytes(
+      gen1Card: gen1Card,
+      gen2Card: gen2Card,
+    );
     if (bytes.isEmpty) return;
 
     // Calculate MD5 hash of the bytes to use as a unique key
@@ -1129,25 +1308,37 @@ class _TahoDashboardState extends State<TahoDashboard> {
                       onPressed: () => _loadFromArchive(record),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                       onPressed: () async {
-                        final bool confirm = await showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Delete Record'),
-                            content: Text('Are you sure you want to delete the record for ${record.driverName}?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('CANCEL'),
+                        final bool confirm =
+                            await showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Record'),
+                                content: Text(
+                                  'Are you sure you want to delete the record for ${record.driverName}?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('CANCEL'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text(
+                                      'DELETE',
+                                      style: TextStyle(color: Colors.redAccent),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('DELETE', style: TextStyle(color: Colors.redAccent)),
-                              ),
-                            ],
-                          ),
-                        ) ?? false;
+                            ) ??
+                            false;
                         if (confirm) {
                           record.delete();
                         }
@@ -1225,7 +1416,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   }
 
   Widget _buildVehiclesTab() {
-    if (vehicles.isEmpty) return const Center(child: Text("No vehicle data found."));
+    if (vehicles.isEmpty)
+      return const Center(child: Text("No vehicle data found."));
     return ListView.builder(
       itemCount: vehicles.length,
       itemBuilder: (context, index) => _buildDayCard(vehicles[index], index),
@@ -1236,25 +1428,59 @@ class _TahoDashboardState extends State<TahoDashboard> {
     final id = cardId!;
     final theme = Theme.of(context);
     return Container(
-      width: double.infinity, margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface, borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
         border: Border.all(color: primaryGreen.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(child: Text('${id.name} ${id.surname}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryGreen))),
+          Center(
+            child: Text(
+              '${id.name} ${id.surname}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: primaryGreen,
+              ),
+            ),
+          ),
           const Divider(height: 30, thickness: 1),
           _idRow(Icons.credit_card, 'Card Number', id.cardNumber),
           _idRow(Icons.cake, 'Birthday', id.formattedBirthday),
-          _idRow(Icons.calendar_today, 'Issue Date', id.startDate.toLocal().toString().split(' ').first),
-          _idRow(Icons.calendar_today, 'Expiry Date', id.expiryDate.toLocal().toString().split(' ').first),
-          _idRow(Icons.badge, 'Driver License', driverLicense?.licenseNumber ?? "/"),
+          _idRow(
+            Icons.calendar_today,
+            'Issue Date',
+            id.startDate.toLocal().toString().split(' ').first,
+          ),
+          _idRow(
+            Icons.calendar_today,
+            'Expiry Date',
+            id.expiryDate.toLocal().toString().split(' ').first,
+          ),
+          _idRow(
+            Icons.badge,
+            'Driver License',
+            driverLicense?.licenseNumber ?? "/",
+          ),
           _idRow(Icons.public, 'Country', id.country),
           _idRow(Icons.business, 'Issuer', id.issuer),
-          _idRow(Icons.history, 'Last Download', lastDownload?.formattedDate ?? '/'),
+          _idRow(
+            Icons.history,
+            'Last Download',
+            lastDownload?.formattedDate ?? '/',
+          ),
         ],
       ),
     );
@@ -1267,14 +1493,33 @@ class _TahoDashboardState extends State<TahoDashboard> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryGreen.withValues(alpha: 0.1), shape: BoxShape.circle),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: primaryGreen.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, size: 18, color: primaryGreen),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-            Text(value.isEmpty ? "/" : value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: theme.colorScheme.onSurface)),
-          ])),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                ),
+                Text(
+                  value.isEmpty ? "/" : value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1283,7 +1528,8 @@ class _TahoDashboardState extends State<TahoDashboard> {
   Widget _buildDayCard(DailyVehicles day, int index) {
     final theme = Theme.of(context);
     return Card(
-      elevation: 2, margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       color: theme.colorScheme.surface,
       child: Theme(
@@ -1291,12 +1537,23 @@ class _TahoDashboardState extends State<TahoDashboard> {
         child: ExpansionTile(
           shape: const Border(),
           collapsedShape: const Border(),
-          title: Text(day.date.toLocal().toString().split(' ').first, style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Text(
+            day.date.toLocal().toString().split(' ').first,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           leading: const Icon(Icons.calendar_month, color: primaryGreen),
-          children: day.vehicles.map((v) => ListTile(
-            dense: true, title: Text(v.registration), subtitle: Text("${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}"),
-            trailing: Text("${v.endKm - v.startKm} km"),
-          )).toList(),
+          children: day.vehicles
+              .map(
+                (v) => ListTile(
+                  dense: true,
+                  title: Text(v.registration),
+                  subtitle: Text(
+                    "${v.startTime.toLocal().toString().split(' ')[1].substring(0, 5)} - ${v.endTime.toLocal().toString().split(' ')[1].substring(0, 5)}",
+                  ),
+                  trailing: Text("${v.endKm - v.startKm} km"),
+                ),
+              )
+              .toList(),
         ),
       ),
     );
@@ -1328,7 +1585,10 @@ class ExpandingActionMenu extends StatelessWidget {
               const SizedBox(width: 12),
               Text(
                 action.label,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -1371,6 +1631,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late bool _localIsGen2View;
   bool _under50km = false;
+  bool _includeManualInSummary = false;
   late int _utcOffset;
 
   @override
@@ -1378,13 +1639,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _localIsGen2View = widget.isGen2View;
     _utcOffset = widget.utcOffset;
-    _loadUnder50km();
+    _loadSettings();
   }
 
-  Future<void> _loadUnder50km() async {
+  Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _under50km = prefs.getBool('under50km') ?? false;
+      _includeManualInSummary =
+          prefs.getBool('includeManualInSummary') ?? false;
     });
   }
 
@@ -1393,6 +1656,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('under50km', value);
     setState(() {
       _under50km = value;
+    });
+  }
+
+  Future<void> _setIncludeManualInSummary(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('includeManualInSummary', value);
+    setState(() {
+      _includeManualInSummary = value;
     });
   }
 
@@ -1406,7 +1677,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               "Data View Generation",
-              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF28B52F)),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF28B52F),
+              ),
             ),
           ),
           RadioListTile<bool>(
@@ -1440,12 +1714,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               "UTC Offset",
-              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF28B52F)),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF28B52F),
+              ),
             ),
           ),
           ListTile(
             title: const Text("Time Zone (UTC)"),
-            subtitle: Text("Current offset: ${_utcOffset >= 0 ? '+' : ''}$_utcOffset hours"),
+            subtitle: Text(
+              "Current offset: ${_utcOffset >= 0 ? '+' : ''}$_utcOffset hours",
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1473,7 +1752,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               "Overdrive Settings",
-              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF28B52F)),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF28B52F),
+              ),
             ),
           ),
           SwitchListTile(
@@ -1482,16 +1764,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _setUnder50km,
             activeColor: const Color(0xFF28B52F),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: Text(
-              "NOTE: For the application to correctly detect overdrive, the card must be inserted in the tachograph and kept under constant voltage, meaning that electrical power must be continuously supplied.",
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8),
-                fontStyle: FontStyle.italic,
-              ),
+          SwitchListTile(
+            title: const Text("Include Manual Entries in Summary"),
+            subtitle: const Text(
+              "Include activities when no card was inserted (manual entries)",
             ),
+            value: _includeManualInSummary,
+            onChanged: _setIncludeManualInSummary,
+            activeColor: const Color(0xFF28B52F),
           ),
           const Divider(),
           ListTile(
@@ -1522,9 +1802,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const PrivacyPolicyWebView(
-                                      url: "https://ekonaser.github.io/Privacy-Policy---TahoReader/",
-                                    ),
+                                    builder: (context) =>
+                                        const PrivacyPolicyWebView(
+                                          url:
+                                              "https://ekonaser.github.io/Privacy-Policy---TahoReader/",
+                                        ),
                                   ),
                                 );
                               },
@@ -1596,7 +1878,10 @@ class _PrivacyPolicyWebViewState extends State<PrivacyPolicyWebView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.open_in_new),
-            onPressed: () => launchUrl(Uri.parse(widget.url), mode: LaunchMode.externalApplication),
+            onPressed: () => launchUrl(
+              Uri.parse(widget.url),
+              mode: LaunchMode.externalApplication,
+            ),
           ),
         ],
       ),
@@ -1604,7 +1889,9 @@ class _PrivacyPolicyWebViewState extends State<PrivacyPolicyWebView> {
         children: [
           WebViewWidget(controller: _controller),
           if (_isLoading)
-            const Center(child: CircularProgressIndicator(color: Color(0xFF28B52F))),
+            const Center(
+              child: CircularProgressIndicator(color: Color(0xFF28B52F)),
+            ),
         ],
       ),
     );

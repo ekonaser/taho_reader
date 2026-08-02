@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:math';
 import 'package:flutter/material.dart' show Color;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -19,6 +18,7 @@ class TachoPdfGenerator {
     bool under50km = false,
     bool openImmediately = false,
     bool share = false,
+    bool includeManualEntries = false,
     Map<DateTime, Uint8List>? dailyTimelineImages,
   }) async {
     final doc = pw.Document();
@@ -26,7 +26,7 @@ class TachoPdfGenerator {
 
     final summary = ActivitySummary();
     for (var day in days) {
-      final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: true);
+      final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: !includeManualEntries);
       summary.rest += s.rest;
       summary.availability += s.availability;
       summary.work += s.work;
@@ -157,7 +157,7 @@ class TachoPdfGenerator {
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
             data: days.map((day) {
-              final s = calculateDaySummary(day, utcOffset, under50km, days);
+              final s = calculateDaySummary(day, utcOffset, under50km, days, onlyCard: !includeManualEntries);
               return [
                 day.date.toLocal().toString().split(' ').first,
                 formatDur(s.driving),

@@ -124,7 +124,7 @@ void _paintTimeline({
 
   for (int h = 0; h <= 24; h++) {
     final x = contentStartX + h * hourWidth;
-    
+
     // Riši grid črto samo če rišemo labelo ali če je dovolj prostora
     if (hourWidth > 20 || h % labelStep == 0) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
@@ -142,7 +142,7 @@ void _paintTimeline({
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      
+
       // Centriraj labelo na črti, če ni na koncu
       double labelX = x;
       if (h == 24) {
@@ -152,7 +152,7 @@ void _paintTimeline({
       } else {
         labelX += 2;
       }
-      
+
       labelPainter.paint(canvas, Offset(labelX, size.height - 24));
     }
   }
@@ -357,6 +357,7 @@ class ActivityTimeline extends StatefulWidget {
   final int utcOffset;
   final ValueChanged<int> onUtcOffsetChanged;
   final bool under50km;
+  final bool includeManualInSummary;
   final List<PlaceRecord> places;
   final List<PlaceRecordG2> placesG2;
   final List<DriverEvent> driverEvents;
@@ -377,6 +378,7 @@ class ActivityTimeline extends StatefulWidget {
     required this.utcOffset,
     required this.onUtcOffsetChanged,
     required this.under50km,
+    required this.includeManualInSummary,
     this.places = const [],
     this.placesG2 = const [],
     this.driverEvents = const [],
@@ -543,17 +545,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         final viewPadding = MediaQuery.paddingOf(context);
         final screenWidth = MediaQuery.sizeOf(context).width;
         final screenHeight = MediaQuery.sizeOf(context).height;
-        final safeHorizontalInset =
-            viewPadding.left + viewPadding.right + 24.0;
-        final safeVerticalInset =
-            viewPadding.top + viewPadding.bottom + 24.0;
+        final safeHorizontalInset = viewPadding.left + viewPadding.right + 24.0;
+        final safeVerticalInset = viewPadding.top + viewPadding.bottom + 24.0;
         final maxTimelineWidth = screenWidth - safeHorizontalInset;
-        final maxTimelineHeight =
-            screenHeight - safeVerticalInset - 260.0;
-        final timelineWidth = maxTimelineWidth.clamp(
-          280.0,
-          double.infinity,
-        );
+        final maxTimelineHeight = screenHeight - safeVerticalInset - 260.0;
+        final timelineWidth = maxTimelineWidth.clamp(280.0, double.infinity);
         final timelineHeight = max(
           160.0,
           min(200.0, maxTimelineHeight.clamp(160.0, 200.0)),
@@ -565,8 +561,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
         // Use fitWidth as default if not manually zoomed.
         // Also ensure we never go below fitWidth (e.g. after screen rotation).
-        final double effectiveHourWidth =
-            _isManualZoom ? max(_hourWidth, fitWidth) : fitWidth;
+        final double effectiveHourWidth = _isManualZoom
+            ? max(_hourWidth, fitWidth)
+            : fitWidth;
 
         // CRITICAL: Re-calculate render data based on the effective scale
         final renderData = _buildTimelineRenderData(
@@ -596,7 +593,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
         final timelineCacheKey =
             '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
-        
+
         if (_cachedTimelinePicture == null ||
             _cachedTimelineKey != timelineCacheKey ||
             _cachedTimelineSize != pictureSize) {
@@ -748,7 +745,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
@@ -760,7 +760,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       Expanded(
                         child: Row(
                           children: [
-                            Icon(Icons.zoom_out, size: 18, color: colorScheme.onSurfaceVariant),
+                            Icon(
+                              Icons.zoom_out,
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                             Expanded(
                               child: Slider(
                                 value: effectiveHourWidth,
@@ -775,7 +779,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                                 },
                               ),
                             ),
-                            Icon(Icons.zoom_in, size: 18, color: colorScheme.onSurfaceVariant),
+                            Icon(
+                              Icons.zoom_in,
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ],
                         ),
                       ),
@@ -848,7 +856,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                          Icon(
+                            Icons.calendar_month,
+                            size: 20,
+                            color: primaryGreen,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             _startDate != null && _endDate != null
@@ -911,7 +923,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.calendar_month, size: 20, color: primaryGreen),
+                          Icon(
+                            Icons.calendar_month,
+                            size: 20,
+                            color: primaryGreen,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             "${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}",
@@ -1123,9 +1139,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
       if (rec == null) continue;
 
-      // Only count activities recorded under card == 1 in Period/Monthly summaries.
-      // Activities with card == 0 and crew == 1 will be added later.
-      if (rec.card != 1) continue;
+      final bool shouldInclude =
+          rec.card == 1 ||
+          (widget.includeManualInSummary && rec.card == 0 && rec.crew == 1);
+
+      if (!shouldInclude) continue;
 
       final duration = next.time.difference(curr.time).inMinutes;
       if (duration <= 0) continue;
@@ -1498,7 +1516,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     );
 
     final picture = recorder.endRecording();
-    final img = await picture.toImage(targetWidth.toInt(), targetHeight.toInt());
+    final img = await picture.toImage(
+      targetWidth.toInt(),
+      targetHeight.toInt(),
+    );
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
   }
@@ -1605,6 +1626,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Divider(),
             ListTile(
               leading: Icon(Icons.share, color: primaryGreen),
               title: const Text('Share Summary PDF'),
@@ -1626,6 +1648,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   under50km: widget.under50km,
                   share: true,
                   dailyTimelineImages: images,
+                  includeManualEntries: widget.includeManualInSummary,
                 );
               },
             ),
@@ -1650,6 +1673,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   under50km: widget.under50km,
                   openImmediately: true,
                   dailyTimelineImages: images,
+                  includeManualEntries: widget.includeManualInSummary,
                 );
               },
             ),
@@ -1674,6 +1698,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                   under50km: widget.under50km,
                   openImmediately: false,
                   dailyTimelineImages: images,
+                  includeManualEntries: widget.includeManualInSummary,
                 );
               },
             ),
@@ -2026,9 +2051,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       }
 
       const double separatorY = 79.5;
-      final double blockTop = rec.slot == 1 
-          ? separatorY - blockHeight // SLOT 2 (zgoraj) raste navzgor
-          : separatorY;              // SLOT 1 (spodaj) raste navzdol
+      final double blockTop = rec.slot == 1
+          ? separatorY -
+                blockHeight // SLOT 2 (zgoraj) raste navzgor
+          : separatorY; // SLOT 1 (spodaj) raste navzdol
 
       Color color;
       switch (rec.activity) {
