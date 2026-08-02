@@ -852,21 +852,38 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 _buildLegend(primaryGreen, _summary),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Activity Log",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Activity Log",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.picture_as_pdf,
+                              color: primaryGreen,
+                            ),
+                            onPressed: () =>
+                                _showExportOptions(day, primaryGreen),
+                            tooltip: "Export to PDF",
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: Icon(Icons.picture_as_pdf, color: primaryGreen),
-                        onPressed: () => _showExportOptions(day, primaryGreen),
-                        tooltip: "Export to PDF",
+                      const SizedBox(height: 4),
+                      Text(
+                        "Click on activity log to add custom event",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1679,7 +1696,6 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Divider(),
             ListTile(
               leading: Icon(Icons.share, color: primaryGreen),
               title: const Text('Share Summary PDF'),

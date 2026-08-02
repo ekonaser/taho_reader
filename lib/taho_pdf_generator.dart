@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart' show Color;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'taho_models.dart';
@@ -7,7 +8,49 @@ import 'pdf_helper.dart';
 import 'event_model.dart';
 
 class TachoPdfGenerator {
-  static pw.Widget _buildSectionHeader(String title, PdfColor color) {
+  static DateTime _normalizeDate(DateTime value) {
+    final local = value.toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  static bool _eventFallsOnDate(DriverEvent event, DateTime targetDate) {
+    final targetDay = _normalizeDate(targetDate);
+    final startDay = _normalizeDate(event.date);
+    final endDay = event.endDate != null
+        ? _normalizeDate(event.endDate!)
+        : startDay;
+
+    return !startDay.isAfter(targetDay) && !endDay.isBefore(targetDay);
+  }
+
+  static Future<pw.Font> _loadPdfFont() async {
+    try {
+      final fontBytes = await _loadFontBytes();
+      if (fontBytes != null) {
+        final byteData = ByteData.sublistView(fontBytes);
+        return pw.Font.ttf(byteData);
+      }
+    } catch (_) {}
+
+    return pw.Font.helvetica();
+  }
+
+  static Future<Uint8List?> _loadFontBytes() async {
+    try {
+      final fontData = await rootBundle.load(
+        'assets/fonts/NotoSans-Regular.ttf',
+      );
+      return fontData.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static pw.Widget _buildSectionHeader(
+    String title,
+    PdfColor color,
+    pw.Font font,
+  ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -17,6 +60,7 @@ class TachoPdfGenerator {
             fontSize: 12,
             fontWeight: pw.FontWeight.bold,
             color: color,
+            font: font,
           ),
         ),
         pw.Divider(thickness: 1, color: color),
@@ -41,6 +85,7 @@ class TachoPdfGenerator {
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
+    final pdfFont = await _loadPdfFont();
 
     final summary = ActivitySummary();
     for (var day in days) {
@@ -65,12 +110,7 @@ class TachoPdfGenerator {
     }
 
     final eventsInPeriod = allEvents.where((e) {
-      return days.any(
-        (d) =>
-            e.date.year == d.date.year &&
-            e.date.month == d.date.month &&
-            e.date.day == d.date.day,
-      );
+      return days.any((d) => _eventFallsOnDate(e, d.date));
     }).toList();
     eventsInPeriod.sort((a, b) => b.date.compareTo(a.date));
 
@@ -78,8 +118,13 @@ class TachoPdfGenerator {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        header: (context) =>
-            _buildHeader(title, "Period: $rangeStr", "", pdfPrimaryGreen),
+        header: (context) => _buildHeader(
+          title,
+          "Period: $rangeStr",
+          "",
+          pdfPrimaryGreen,
+          pdfFont,
+        ),
         build: (context) => [
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -94,6 +139,7 @@ class TachoPdfGenerator {
                         fontSize: 10,
                         fontWeight: pw.FontWeight.bold,
                         color: PdfColors.grey700,
+                        font: pdfFont,
                       ),
                     ),
                     pw.SizedBox(height: 4),
@@ -102,15 +148,16 @@ class TachoPdfGenerator {
                       style: pw.TextStyle(
                         fontSize: 16,
                         fontWeight: pw.FontWeight.bold,
+                        font: pdfFont,
                       ),
                     ),
                     pw.Text(
                       "Card: ${cardId?.cardNumber ?? 'N/A'}",
-                      style: const pw.TextStyle(fontSize: 12),
+                      style: pw.TextStyle(fontSize: 12, font: pdfFont),
                     ),
                     pw.Text(
                       "Birthday: ${cardId?.formattedBirthday ?? 'N/A'}",
-                      style: const pw.TextStyle(fontSize: 12),
+                      style: pw.TextStyle(fontSize: 12, font: pdfFont),
                     ),
                   ],
                 ),
@@ -133,6 +180,7 @@ class TachoPdfGenerator {
                         fontSize: 10,
                         fontWeight: pw.FontWeight.bold,
                         color: PdfColors.grey700,
+                        font: pdfFont,
                       ),
                     ),
                     pw.SizedBox(height: 4),
@@ -140,26 +188,31 @@ class TachoPdfGenerator {
                       "Driving:",
                       formatDur(summary.driving),
                       PdfColors.blue,
+                      pdfFont,
                     ),
                     _pdfSummaryRow(
                       "Work:",
                       formatDur(summary.work),
                       PdfColors.orange,
+                      pdfFont,
                     ),
                     _pdfSummaryRow(
                       "Availability:",
                       formatDur(summary.availability),
                       PdfColors.grey700,
+                      pdfFont,
                     ),
                     _pdfSummaryRow(
                       "Rest:",
                       formatDur(summary.rest),
                       pdfPrimaryGreen,
+                      pdfFont,
                     ),
                     _pdfSummaryRow(
                       "Distance:",
                       "${summary.totalKm} km",
                       PdfColors.teal,
+                      pdfFont,
                     ),
                   ],
                 ),
@@ -173,12 +226,16 @@ class TachoPdfGenerator {
               fontSize: 10,
               fontWeight: pw.FontWeight.bold,
               color: pdfPrimaryGreen,
+              font: pdfFont,
             ),
           ),
           pw.Divider(thickness: 0.5, color: pdfPrimaryGreen),
           pw.SizedBox(height: 5),
           pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              font: pdfFont,
+            ),
             headers: ['Date', 'Driving', 'Work', 'Availability', 'Rest'],
             data: days.map((day) {
               final s = calculateDaySummary(
@@ -200,13 +257,17 @@ class TachoPdfGenerator {
           if (eventsInPeriod.isNotEmpty) ...[
             pw.SizedBox(height: 20),
             pw.NewPage(),
-            _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen),
-            _buildEventsSection(eventsInPeriod, pdfPrimaryGreen),
+            _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen, pdfFont),
+            _buildEventsSection(eventsInPeriod, pdfPrimaryGreen, pdfFont),
           ],
           if (dailyTimelineImages != null &&
               dailyTimelineImages.isNotEmpty) ...[
             pw.NewPage(),
-            _buildSectionHeader("VISUAL DAILY TIMELINES", pdfPrimaryGreen),
+            _buildSectionHeader(
+              "VISUAL DAILY TIMELINES",
+              pdfPrimaryGreen,
+              pdfFont,
+            ),
             ...dailyTimelineImages.entries.map((entry) {
               final dateStr = entry.key.toLocal().toString().split(' ').first;
               return pw.Column(
@@ -219,6 +280,7 @@ class TachoPdfGenerator {
                       fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.grey700,
+                      font: pdfFont,
                     ),
                   ),
                   pw.SizedBox(height: 5),
@@ -266,16 +328,12 @@ class TachoPdfGenerator {
   }) async {
     final doc = pw.Document();
     final pdfPrimaryGreen = PdfColor.fromInt(primaryColor.toARGB32());
+    final pdfFont = await _loadPdfFont();
     final dateStr = day.date.toLocal().toString().split(' ').first;
     final utcStr = "UTC ${utcOffset >= 0 ? '+' : ''}$utcOffset";
 
     final dayEvents = allEvents
-        .where(
-          (e) =>
-              e.date.year == day.date.year &&
-              e.date.month == day.date.month &&
-              e.date.day == day.date.day,
-        )
+        .where((e) => _eventFallsOnDate(e, day.date))
         .toList();
     dayEvents.sort((a, b) => b.date.compareTo(a.date));
 
@@ -290,8 +348,13 @@ class TachoPdfGenerator {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        header: (context) =>
-            _buildHeader("Activity Report", dateStr, utcStr, pdfPrimaryGreen),
+        header: (context) => _buildHeader(
+          "Activity Report",
+          dateStr,
+          utcStr,
+          pdfPrimaryGreen,
+          pdfFont,
+        ),
         build: (pw.Context context) {
           // Pridobivanje vseh vozil za ta dan
           List<pw.Widget> vehicleWidgets = [];
@@ -309,6 +372,7 @@ class TachoPdfGenerator {
                     v.registrationNumber,
                     v.odometerBegin,
                     v.odometerEnd,
+                    pdfFont,
                   ),
                 );
               }
@@ -321,7 +385,7 @@ class TachoPdfGenerator {
               );
               for (var v in vDay.vehicles) {
                 vehicleWidgets.add(
-                  _vehicleInfoRow(v.registration, v.startKm, v.endKm),
+                  _vehicleInfoRow(v.registration, v.startKm, v.endKm, pdfFont),
                 );
               }
             }
@@ -331,7 +395,11 @@ class TachoPdfGenerator {
             vehicleWidgets.add(
               pw.Text(
                 "No vehicle data available",
-                style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+                style: pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColors.grey,
+                  font: pdfFont,
+                ),
               ),
             );
           }
@@ -350,6 +418,7 @@ class TachoPdfGenerator {
                           fontSize: 9,
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.grey700,
+                          font: pdfFont,
                         ),
                       ),
                       pw.SizedBox(height: 2),
@@ -358,15 +427,16 @@ class TachoPdfGenerator {
                         style: pw.TextStyle(
                           fontSize: 14,
                           fontWeight: pw.FontWeight.bold,
+                          font: pdfFont,
                         ),
                       ),
                       pw.Text(
                         "Card: ${cardId?.cardNumber ?? 'N/A'}",
-                        style: const pw.TextStyle(fontSize: 10),
+                        style: pw.TextStyle(fontSize: 10, font: pdfFont),
                       ),
                       pw.Text(
                         "Birthday: ${cardId?.formattedBirthday ?? 'N/A'}",
-                        style: const pw.TextStyle(fontSize: 10),
+                        style: pw.TextStyle(fontSize: 10, font: pdfFont),
                       ),
 
                       pw.SizedBox(height: 12),
@@ -377,6 +447,7 @@ class TachoPdfGenerator {
                           fontSize: 9,
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.grey700,
+                          font: pdfFont,
                         ),
                       ),
                       pw.SizedBox(height: 4),
@@ -384,7 +455,7 @@ class TachoPdfGenerator {
                     ],
                   ),
                 ),
-                _buildTotalsBox(pdfSummary, pdfPrimaryGreen),
+                _buildTotalsBox(pdfSummary, pdfPrimaryGreen, pdfFont),
               ],
             ),
             pw.SizedBox(height: 20),
@@ -394,6 +465,7 @@ class TachoPdfGenerator {
                 fontSize: 10,
                 fontWeight: pw.FontWeight.bold,
                 color: pdfPrimaryGreen,
+                font: pdfFont,
               ),
             ),
             pw.Divider(thickness: 1, color: pdfPrimaryGreen),
@@ -403,11 +475,12 @@ class TachoPdfGenerator {
               pdfPrimaryGreen,
               utcOffset,
               allActivities,
+              pdfFont,
             ),
             if (timelineImageBytes != null) ...[
               pw.SizedBox(height: 20),
               pw.NewPage(),
-              _buildSectionHeader("VISUAL TIMELINE", pdfPrimaryGreen),
+              _buildSectionHeader("VISUAL TIMELINE", pdfPrimaryGreen, pdfFont),
               pw.Container(
                 width: double.infinity,
                 child: pw.Image(
@@ -419,8 +492,8 @@ class TachoPdfGenerator {
             if (dayEvents.isNotEmpty) ...[
               pw.SizedBox(height: 20),
               pw.NewPage(),
-              _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen),
-              _buildEventsSection(dayEvents, pdfPrimaryGreen),
+              _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen, pdfFont),
+              _buildEventsSection(dayEvents, pdfPrimaryGreen, pdfFont),
             ],
           ];
         },
@@ -430,7 +503,12 @@ class TachoPdfGenerator {
     await _finalizePdf(doc, "ActivityLog_$dateStr", share, openImmediately);
   }
 
-  static pw.Widget _vehicleInfoRow(String reg, int start, int end) {
+  static pw.Widget _vehicleInfoRow(
+    String reg,
+    int start,
+    int end,
+    pw.Font font,
+  ) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 4),
       child: pw.Column(
@@ -438,11 +516,19 @@ class TachoPdfGenerator {
         children: [
           pw.Text(
             "Registration: $reg",
-            style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              font: font,
+            ),
           ),
           pw.Text(
             "Odometer: $start - $end: ${end - start} km",
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+            style: pw.TextStyle(
+              fontSize: 9,
+              color: PdfColors.grey800,
+              font: font,
+            ),
           ),
         ],
       ),
@@ -454,6 +540,7 @@ class TachoPdfGenerator {
     String date,
     String utc,
     PdfColor color,
+    pw.Font font,
   ) {
     return pw.Column(
       children: [
@@ -469,14 +556,22 @@ class TachoPdfGenerator {
                     fontSize: 24,
                     fontWeight: pw.FontWeight.bold,
                     color: color,
+                    font: font,
                   ),
                 ),
-                pw.Text("Date: $date", style: const pw.TextStyle(fontSize: 14)),
+                pw.Text(
+                  "Date: $date",
+                  style: pw.TextStyle(fontSize: 14, font: font),
+                ),
               ],
             ),
             pw.Text(
               utc,
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                font: font,
+              ),
             ),
           ],
         ),
@@ -487,7 +582,11 @@ class TachoPdfGenerator {
     );
   }
 
-  static pw.Widget _buildTotalsBox(ActivitySummary summary, PdfColor color) {
+  static pw.Widget _buildTotalsBox(
+    ActivitySummary summary,
+    PdfColor color,
+    pw.Font font,
+  ) {
     String format(int mins) =>
         "${(mins ~/ 60).toString().padLeft(2, '0')}:${(mins % 60).toString().padLeft(2, '0')}";
     return pw.Container(
@@ -505,35 +604,48 @@ class TachoPdfGenerator {
               fontSize: 9,
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.grey700,
+              font: font,
             ),
           ),
           pw.SizedBox(height: 4),
-          _pdfSummaryRow("Driving:", format(summary.driving), PdfColors.blue),
-          _pdfSummaryRow("Work:", format(summary.work), PdfColors.orange),
+          _pdfSummaryRow(
+            "Driving:",
+            format(summary.driving),
+            PdfColors.blue,
+            font,
+          ),
+          _pdfSummaryRow("Work:", format(summary.work), PdfColors.orange, font),
           _pdfSummaryRow(
             "Availability:",
             format(summary.availability),
             PdfColors.grey700,
+            font,
           ),
-          _pdfSummaryRow("Rest:", format(summary.rest), color),
+          _pdfSummaryRow("Rest:", format(summary.rest), color, font),
         ],
       ),
     );
   }
 
-  static pw.Widget _pdfSummaryRow(String label, String value, PdfColor color) {
+  static pw.Widget _pdfSummaryRow(
+    String label,
+    String value,
+    PdfColor color,
+    pw.Font font,
+  ) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 1),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 10)),
+          pw.Text(label, style: pw.TextStyle(fontSize: 10, font: font)),
           pw.Text(
             value,
             style: pw.TextStyle(
               fontSize: 11,
               fontWeight: pw.FontWeight.bold,
               color: color,
+              font: font,
             ),
           ),
         ],
@@ -546,6 +658,7 @@ class TachoPdfGenerator {
     PdfColor primary,
     int utcOffset,
     List<DailyActivities> allActivities,
+    pw.Font font,
   ) {
     List<pw.Widget> rows = [];
 
@@ -611,6 +724,7 @@ class TachoPdfGenerator {
                       style: pw.TextStyle(
                         fontSize: 9,
                         fontWeight: pw.FontWeight.bold,
+                        font: font,
                       ),
                     ),
                     pw.Text(
@@ -618,6 +732,7 @@ class TachoPdfGenerator {
                       style: pw.TextStyle(
                         fontSize: 7,
                         color: PdfColors.grey600,
+                        font: font,
                       ),
                     ),
                   ],
@@ -644,6 +759,7 @@ class TachoPdfGenerator {
                       style: pw.TextStyle(
                         fontSize: 9,
                         fontWeight: pw.FontWeight.bold,
+                        font: font,
                       ),
                     ),
                     pw.Text(
@@ -652,6 +768,7 @@ class TachoPdfGenerator {
                         fontSize: 9,
                         color: _getActivityPdfColor(rec.activity, primary),
                         fontWeight: pw.FontWeight.bold,
+                        font: font,
                       ),
                     ),
                   ],
@@ -687,6 +804,7 @@ class TachoPdfGenerator {
   static pw.Widget _buildEventsSection(
     List<DriverEvent> events,
     PdfColor color,
+    pw.Font font,
   ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -697,6 +815,7 @@ class TachoPdfGenerator {
             fontSize: 10,
             fontWeight: pw.FontWeight.bold,
             color: color,
+            font: font,
           ),
         ),
         pw.Divider(thickness: 0.5, color: color),
@@ -721,18 +840,19 @@ class TachoPdfGenerator {
                         fontWeight: pw.FontWeight.bold,
                         fontSize: 10,
                         color: _getPdfEventColor(event.type),
+                        font: font,
                       ),
                     ),
                     pw.Text(
-                      event.date.toLocal().toString().split('.')[0],
-                      style: const pw.TextStyle(fontSize: 9),
+                      _formatEventTime(event.date),
+                      style: pw.TextStyle(fontSize: 9, font: font),
                     ),
                   ],
                 ),
                 pw.SizedBox(height: 2),
                 pw.Text(
                   event.description,
-                  style: const pw.TextStyle(fontSize: 10),
+                  style: pw.TextStyle(fontSize: 10, font: font),
                 ),
               ],
             ),
@@ -740,6 +860,11 @@ class TachoPdfGenerator {
         ),
       ],
     );
+  }
+
+  static String _formatEventTime(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   static PdfColor _getActivityPdfColor(int type, PdfColor primary) {
