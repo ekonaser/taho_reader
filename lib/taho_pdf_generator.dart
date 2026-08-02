@@ -257,7 +257,6 @@ class TachoPdfGenerator {
           if (eventsInPeriod.isNotEmpty) ...[
             pw.SizedBox(height: 20),
             pw.NewPage(),
-            _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen, pdfFont),
             _buildEventsSection(eventsInPeriod, pdfPrimaryGreen, pdfFont),
           ],
           if (dailyTimelineImages != null &&
@@ -492,7 +491,6 @@ class TachoPdfGenerator {
             if (dayEvents.isNotEmpty) ...[
               pw.SizedBox(height: 20),
               pw.NewPage(),
-              _buildSectionHeader("DRIVER EVENTS", pdfPrimaryGreen, pdfFont),
               _buildEventsSection(dayEvents, pdfPrimaryGreen, pdfFont),
             ],
           ];
@@ -864,7 +862,11 @@ class TachoPdfGenerator {
 
   static String _formatEventTime(DateTime dateTime) {
     final local = dateTime.toLocal();
-    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    final datePart =
+        '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+    final timePart =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return '$datePart $timePart';
   }
 
   static PdfColor _getActivityPdfColor(int type, PdfColor primary) {

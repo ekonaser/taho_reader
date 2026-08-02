@@ -1126,7 +1126,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   }
 
   String _buildPeriodPreviewScopeKey(List<DailyActivities> days) {
-    return days.map((day) => day.date.toIso8601String()).join('|');
+    final daysKey = days.map((day) => day.date.toIso8601String()).join('|');
+    final eventsKey = widget.driverEvents
+        .map(
+          (event) =>
+              '${event.date.toIso8601String()}-${event.endDate?.toIso8601String() ?? ''}-${event.type}-${event.description}',
+        )
+        .join('|');
+
+    return '$daysKey|utc:${widget.utcOffset}|u50:${widget.under50km}|manual:${widget.includeManualInSummary}|events:$eventsKey';
   }
 
   String _buildPeriodPreviewImageKey(DailyActivities day) {
