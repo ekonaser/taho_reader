@@ -2,11 +2,77 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'taho_models.dart';
 import 'taho_painters.dart';
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'taho_pdf_generator.dart';
 import 'event_model.dart';
+
+String _getCountryCode(int code) {
+  const countryCodes = <int, String>{
+    1: 'A',
+    2: 'AL',
+    3: 'AND',
+    4: 'ARM',
+    5: 'AZ',
+    6: 'B',
+    7: 'BG',
+    8: 'BIH',
+    9: 'BY',
+    10: 'CH',
+    11: 'CY',
+    12: 'CZ',
+    13: 'D',
+    14: 'DK',
+    15: 'E',
+    16: 'EST',
+    17: 'F',
+    18: 'FIN',
+    19: 'FL',
+    20: 'FR, FO',
+    21: 'UK',
+    22: 'GE',
+    23: 'GR',
+    24: 'H',
+    25: 'HR',
+    26: 'I',
+    27: 'IRL',
+    28: 'IS',
+    29: 'KZ',
+    30: 'L',
+    31: 'LT',
+    32: 'LV',
+    33: 'M',
+    34: 'MC',
+    35: 'MD',
+    36: 'MK',
+    37: 'N',
+    38: 'NL',
+    39: 'P',
+    40: 'PL',
+    41: 'RO',
+    42: 'RSM',
+    43: 'RUS',
+    44: 'S',
+    45: 'SK',
+    46: 'SLO',
+    47: 'TM',
+    48: 'TR',
+    49: 'UA',
+    50: 'V',
+    51: 'YU',
+    52: 'MNE',
+    53: 'SRB',
+    54: 'UZ',
+    253: 'EC',
+    254: 'EUR',
+    255: 'WLD',
+  };
+
+  return countryCodes[code] ?? 'Unknown ($code)';
+}
 
 class _TimelineBlock {
   final double left;
@@ -94,6 +160,536 @@ class _TimelineRenderData {
   });
 }
 
+class _TimelineBlockPayload {
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final int colorValue;
+  final bool isCrewLine;
+  final int? durationMinutes;
+
+  const _TimelineBlockPayload({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.colorValue,
+    this.isCrewLine = false,
+    this.durationMinutes,
+  });
+}
+
+class _TimelinePlaceMarkerPayload {
+  final double left;
+  final double top;
+  final String country;
+  final int colorValue;
+  final int type;
+
+  const _TimelinePlaceMarkerPayload({
+    required this.left,
+    required this.top,
+    required this.country,
+    required this.colorValue,
+    required this.type,
+  });
+}
+
+class _TimelineEventMarkerPayload {
+  final double left;
+  final double top;
+  final double width;
+  final int colorValue;
+
+  const _TimelineEventMarkerPayload({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.colorValue,
+  });
+}
+
+class _TimelineMinuteMarkerPayload {
+  final double left;
+  final bool showLabel;
+  final String label;
+
+  const _TimelineMinuteMarkerPayload({
+    required this.left,
+    required this.showLabel,
+    required this.label,
+  });
+}
+
+class _TimelineRenderDataPayload {
+  final ActivitySummary summary;
+  final List<_TimelineBlockPayload> blocks;
+  final List<_TimelineBlockPayload> crewLines;
+  final List<_TimelinePlaceMarkerPayload> placeMarkers;
+  final List<_TimelineEventMarkerPayload> eventMarkers;
+  final List<_TimelineMinuteMarkerPayload> minuteMarkers;
+  final double separatorY;
+  final double slot2LabelY;
+  final double slot1LabelY;
+
+  const _TimelineRenderDataPayload({
+    required this.summary,
+    required this.blocks,
+    required this.crewLines,
+    required this.placeMarkers,
+    required this.eventMarkers,
+    required this.minuteMarkers,
+    required this.separatorY,
+    required this.slot2LabelY,
+    required this.slot1LabelY,
+  });
+}
+
+_TimelineRenderDataPayload _buildTimelineRenderDataPayload({
+  required DailyActivities day,
+  required List<DailyActivities> activities,
+  required List<PlaceRecord> places,
+  required List<PlaceRecordG2> placesG2,
+  required List<DriverEvent> driverEvents,
+  required int utcOffset,
+  required bool under50km,
+  required bool includeManualInSummary,
+  required double hourWidth,
+  required int primaryGreenValue,
+}) {
+  final summary = ActivitySummary();
+  final blocks = <_TimelineBlockPayload>[];
+  final crewLines = <_TimelineBlockPayload>[];
+  final placeMarkers = <_TimelinePlaceMarkerPayload>[];
+  final eventMarkers = <_TimelineEventMarkerPayload>[];
+  final minuteMarkers = <_TimelineMinuteMarkerPayload>[];
+
+  List<({DateTime time, ActivityRecord rec})> allFlat = [];
+  for (var d in activities) {
+    for (var act in d.activities) {
+      allFlat.add((
+        time: d.header.time.add(Duration(minutes: act.time)),
+        rec: act,
+      ));
+    }
+  }
+  allFlat.sort((a, b) {
+    int cmp = a.time.compareTo(b.time);
+    if (cmp != 0) return cmp;
+    if (a.rec.card != b.rec.card) return a.rec.card.compareTo(b.rec.card);
+    if (a.rec.crew != b.rec.crew) return a.rec.crew.compareTo(b.rec.crew);
+    return b.rec.slot.compareTo(a.rec.slot);
+  });
+
+  final DateTime windowStart = day.header.time.subtract(
+    Duration(hours: utcOffset),
+  );
+  final DateTime windowEnd = windowStart.add(const Duration(days: 1));
+
+  ActivityRecord? lastRec;
+  int startIdx = allFlat.lastIndexWhere((e) => !e.time.isAfter(windowStart));
+  if (startIdx != -1) {
+    lastRec = allFlat[startIdx].rec;
+  }
+
+  int accumulatedDriving = 0;
+  bool hasFirstBreakPart = false;
+  double currentHour = 0.0;
+
+  void processSegment(ActivityRecord rec, double startH, double endH) {
+    if (endH <= startH) return;
+
+    if (rec.card == 0 && rec.crew == 0) {
+      accumulatedDriving = 0;
+      hasFirstBreakPart = false;
+      return;
+    }
+
+    final durationMinutes = ((endH - startH) * 60).round();
+    if (durationMinutes <= 0) return;
+
+    double blockHeight;
+    switch (rec.activity) {
+      case 3:
+        blockHeight = 48.0;
+        break;
+      case 1:
+        blockHeight = 38.4;
+        break;
+      case 2:
+        blockHeight = 30.72;
+        break;
+      case 0:
+        blockHeight = 19.2;
+        break;
+      default:
+        blockHeight = 32.0;
+    }
+
+    const double separatorY = 79.5;
+    final double blockTop = rec.slot == 1
+        ? separatorY - blockHeight
+        : separatorY;
+
+    int colorValue;
+    switch (rec.activity) {
+      case 0:
+        colorValue = primaryGreenValue;
+        summary.rest += durationMinutes;
+        if (!under50km) {
+          if (durationMinutes >= 45) {
+            accumulatedDriving = 0;
+            hasFirstBreakPart = false;
+          } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+            accumulatedDriving = 0;
+            hasFirstBreakPart = false;
+          } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+            hasFirstBreakPart = true;
+          }
+        }
+        break;
+      case 1:
+        colorValue = 0xFF9E9E9E;
+        summary.availability += durationMinutes;
+        if (!under50km) {
+          if (durationMinutes >= 45) {
+            accumulatedDriving = 0;
+            hasFirstBreakPart = false;
+          } else if (durationMinutes >= 30 && hasFirstBreakPart) {
+            accumulatedDriving = 0;
+            hasFirstBreakPart = false;
+          } else if (durationMinutes >= 15 && !hasFirstBreakPart) {
+            hasFirstBreakPart = true;
+          }
+        }
+        break;
+      case 2:
+        colorValue = 0xFFFF9800;
+        summary.work += durationMinutes;
+        break;
+      case 3:
+        colorValue = 0xFF2196F3;
+        summary.driving += durationMinutes;
+        if (!under50km) {
+          accumulatedDriving += durationMinutes;
+          if (accumulatedDriving > 270) {
+            summary.overdrive += (accumulatedDriving - 270);
+            final regularDuration =
+                (270 - (accumulatedDriving - durationMinutes)) / 60.0;
+            if (regularDuration > 0) {
+              blocks.add(
+                _TimelineBlockPayload(
+                  left: startH * hourWidth,
+                  top: blockTop,
+                  width: max(2.0, regularDuration * hourWidth),
+                  height: blockHeight,
+                  colorValue: 0xFF2196F3,
+                  durationMinutes: (regularDuration * 60).round(),
+                ),
+              );
+            }
+            final overdriveDuration = (accumulatedDriving - 270) / 60.0;
+            blocks.add(
+              _TimelineBlockPayload(
+                left: (startH + max(0, regularDuration)) * hourWidth,
+                top: blockTop,
+                width: max(2.0, overdriveDuration * hourWidth),
+                height: blockHeight,
+                colorValue: 0xFFF44336,
+                durationMinutes: (overdriveDuration * 60).round(),
+              ),
+            );
+            accumulatedDriving = 270;
+            colorValue = 0;
+          } else {
+            colorValue = 0xFF2196F3;
+          }
+        }
+        break;
+      default:
+        colorValue = 0xFF9E9E9E;
+        break;
+    }
+
+    if (colorValue != 0) {
+      blocks.add(
+        _TimelineBlockPayload(
+          left: startH * hourWidth,
+          top: blockTop,
+          width: max(2.0, (endH - startH) * hourWidth),
+          height: blockHeight,
+          colorValue: colorValue,
+          durationMinutes: durationMinutes,
+        ),
+      );
+    }
+
+    if (rec.crew == 1) {
+      crewLines.add(
+        _TimelineBlockPayload(
+          left: startH * hourWidth,
+          top: separatorY,
+          width: max(2.0, (endH - startH) * hourWidth),
+          height: 2,
+          colorValue: 0xFF3F51B5,
+          isCrewLine: true,
+        ),
+      );
+    }
+  }
+
+  for (var entry in allFlat) {
+    if (entry.time.isAfter(windowEnd)) break;
+    if (entry.time.isAfter(windowStart)) {
+      final entryHour = entry.time.difference(windowStart).inSeconds / 3600.0;
+      if (lastRec != null) {
+        processSegment(lastRec, currentHour, entryHour);
+      }
+      currentHour = entryHour;
+      lastRec = entry.rec;
+    }
+  }
+
+  if (lastRec != null && currentHour < 24.0) {
+    processSegment(lastRec, currentHour, 24.0);
+  }
+
+  int interval;
+  if (hourWidth > 420) {
+    interval = 5;
+  } else if (hourWidth > 250) {
+    interval = 15;
+  } else if (hourWidth > 120) {
+    interval = 30;
+  } else {
+    interval = 0;
+  }
+
+  if (interval > 0) {
+    for (int hour = 0; hour < 24; hour++) {
+      for (int m = interval; m < 60; m += interval) {
+        minuteMarkers.add(
+          _TimelineMinuteMarkerPayload(
+            left: hour * hourWidth + (m / 60.0) * hourWidth,
+            showLabel: hourWidth > 220 && (m % 5 == 0),
+            label: m.toString().padLeft(2, '0'),
+          ),
+        );
+      }
+    }
+  }
+
+  final List<dynamic> allPlaces = [];
+  allPlaces.addAll(places);
+  allPlaces.addAll(placesG2);
+
+  for (var place in allPlaces) {
+    if (place.entryTime.isAfter(windowStart) &&
+        place.entryTime.isBefore(windowEnd)) {
+      final hour = place.entryTime.difference(windowStart).inSeconds / 3600.0;
+      placeMarkers.add(
+        _TimelinePlaceMarkerPayload(
+          left: hour * hourWidth,
+          top: 0,
+          country: _getCountryCode(place.dailyWorkPeriodCountry),
+          colorValue: place.entryTypeDailyWorkPeriod == 0
+              ? 0xFF00C853
+              : 0xFFFF9800,
+          type: place.entryTypeDailyWorkPeriod,
+        ),
+      );
+    }
+  }
+
+  for (var event in driverEvents) {
+    final eventStart = event.date;
+    final eventEnd = event.endDate ?? event.date;
+
+    if (eventStart.isBefore(windowEnd) && eventEnd.isAfter(windowStart)) {
+      final startHour = eventStart.difference(windowStart).inSeconds / 3600.0;
+      final endHour = eventEnd.difference(windowStart).inSeconds / 3600.0;
+      final left = max(0.0, startHour * hourWidth);
+      final right = min(24.0 * hourWidth, endHour * hourWidth);
+      final width = max(2.0, right - left);
+
+      eventMarkers.add(
+        _TimelineEventMarkerPayload(
+          left: left,
+          top: 135,
+          width: width,
+          colorValue: 0xFF4E008A,
+        ),
+      );
+    }
+  }
+
+  return _TimelineRenderDataPayload(
+    summary: summary,
+    blocks: blocks,
+    crewLines: crewLines,
+    placeMarkers: placeMarkers,
+    eventMarkers: eventMarkers,
+    minuteMarkers: minuteMarkers,
+    separatorY: 79.5,
+    slot2LabelY: 45,
+    slot1LabelY: 83,
+  );
+}
+
+Future<_TimelineRenderDataPayload> _buildTimelineRenderDataPayloadInIsolate({
+  required DailyActivities day,
+  required List<DailyActivities> activities,
+  required List<PlaceRecord> places,
+  required List<PlaceRecordG2> placesG2,
+  required List<DriverEvent> driverEvents,
+  required int utcOffset,
+  required bool under50km,
+  required bool includeManualInSummary,
+  required double hourWidth,
+  required int primaryGreenValue,
+}) async {
+  try {
+    return await Isolate.run(
+      () => _buildTimelineRenderDataPayload(
+        day: day,
+        activities: activities,
+        places: places,
+        placesG2: placesG2,
+        driverEvents: driverEvents,
+        utcOffset: utcOffset,
+        under50km: under50km,
+        includeManualInSummary: includeManualInSummary,
+        hourWidth: hourWidth,
+        primaryGreenValue: primaryGreenValue,
+      ),
+    );
+  } catch (error, stackTrace) {
+    debugPrint('Preview isolate failed, falling back to main isolate: $error');
+    debugPrintStack(stackTrace: stackTrace);
+    return _buildTimelineRenderDataPayload(
+      day: day,
+      activities: activities,
+      places: places,
+      placesG2: placesG2,
+      driverEvents: driverEvents,
+      utcOffset: utcOffset,
+      under50km: under50km,
+      includeManualInSummary: includeManualInSummary,
+      hourWidth: hourWidth,
+      primaryGreenValue: primaryGreenValue,
+    );
+  }
+}
+
+Future<Uint8List> _renderTimelinePreviewImage({
+  required _TimelineRenderDataPayload payload,
+  required Color primaryGreen,
+  required double targetWidth,
+  required double targetHeight,
+  required double hourWidth,
+}) async {
+  final renderData = _TimelineRenderData(
+    summary: payload.summary,
+    blocks: payload.blocks
+        .map(
+          (block) => _TimelineBlock(
+            left: block.left,
+            top: block.top,
+            width: block.width,
+            height: block.height,
+            color: block.colorValue == 0
+                ? Colors.transparent
+                : Color(block.colorValue),
+            isCrewLine: block.isCrewLine,
+            durationMinutes: block.durationMinutes,
+          ),
+        )
+        .toList(),
+    crewLines: payload.crewLines
+        .map(
+          (block) => _TimelineBlock(
+            left: block.left,
+            top: block.top,
+            width: block.width,
+            height: block.height,
+            color: block.colorValue == 0
+                ? Colors.transparent
+                : Color(block.colorValue),
+            isCrewLine: block.isCrewLine,
+            durationMinutes: block.durationMinutes,
+          ),
+        )
+        .toList(),
+    placeMarkers: payload.placeMarkers
+        .map(
+          (marker) => _TimelinePlaceMarker(
+            left: marker.left,
+            top: marker.top,
+            country: marker.country,
+            color: marker.colorValue == 0
+                ? Colors.transparent
+                : Color(marker.colorValue),
+            type: marker.type,
+          ),
+        )
+        .toList(),
+    eventMarkers: payload.eventMarkers
+        .map(
+          (marker) => _TimelineEventMarker(
+            left: marker.left,
+            top: marker.top,
+            width: marker.width,
+            color: marker.colorValue == 0
+                ? Colors.transparent
+                : Color(marker.colorValue),
+          ),
+        )
+        .toList(),
+    minuteMarkers: payload.minuteMarkers
+        .map(
+          (marker) => _TimelineMinuteMarker(
+            left: marker.left,
+            showLabel: marker.showLabel,
+            label: marker.label,
+          ),
+        )
+        .toList(),
+    separatorY: payload.separatorY,
+    slot2LabelY: payload.slot2LabelY,
+    slot1LabelY: payload.slot1LabelY,
+  );
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(
+    recorder,
+    Rect.fromLTWH(0, 0, targetWidth, targetHeight),
+  );
+
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, targetWidth, targetHeight),
+    Paint()..color = Colors.white,
+  );
+
+  _paintTimeline(
+    canvas: canvas,
+    size: Size(targetWidth, targetHeight),
+    hourWidth: hourWidth,
+    contentStartX: 0.0,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: primaryGreen,
+      brightness: Brightness.light,
+    ),
+    primaryGreen: primaryGreen,
+    renderData: renderData,
+  );
+
+  final picture = recorder.endRecording();
+  final img = await picture.toImage(targetWidth.toInt(), targetHeight.toInt());
+  final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+  return byteData!.buffer.asUint8List();
+}
+
 DateTimeRange buildActivityLogEventTimeRange({
   required DateTime windowStart,
   required int startOffsetMinutes,
@@ -123,6 +719,9 @@ void _paintTimeline({
   final separatorPaint = Paint()
     ..color = colorScheme.outlineVariant.withValues(alpha: 0.3)
     ..strokeWidth = 1;
+  final double contentInset = 4.0;
+  final double maxX = max(0.0, size.width - contentInset);
+  final double contentEndX = min(contentStartX + (24.0 * hourWidth), maxX);
 
   // Določi korak glede na širino za oznake ur (thinning logic)
   final int labelStep;
@@ -137,7 +736,7 @@ void _paintTimeline({
   }
 
   for (int h = 0; h <= 24; h++) {
-    final x = contentStartX + h * hourWidth;
+    final x = (contentStartX + h * hourWidth).clamp(contentStartX, contentEndX);
 
     // Riši grid črto samo če rišemo labelo ali če je dovolj prostora
     if (hourWidth > 20 || h % labelStep == 0) {
@@ -157,14 +756,19 @@ void _paintTimeline({
         textDirection: TextDirection.ltr,
       )..layout();
 
-      // Centriraj labelo na črti, če ni na koncu
       double labelX = x;
       if (h == 24) {
-        labelX -= labelPainter.width;
+        labelX = (labelX - labelPainter.width).clamp(
+          contentStartX,
+          contentEndX,
+        );
       } else if (h > 0) {
-        labelX -= labelPainter.width / 2;
+        labelX = (labelX - labelPainter.width / 2).clamp(
+          contentStartX,
+          contentEndX,
+        );
       } else {
-        labelX += 2;
+        labelX = (labelX + 2).clamp(contentStartX, contentEndX);
       }
 
       labelPainter.paint(canvas, Offset(labelX, size.height - 24));
@@ -172,9 +776,13 @@ void _paintTimeline({
   }
 
   for (final marker in renderData.minuteMarkers) {
+    final markerX = (contentStartX + marker.left).clamp(
+      contentStartX,
+      contentEndX,
+    );
     canvas.drawLine(
-      Offset(contentStartX + marker.left, 0),
-      Offset(contentStartX + marker.left, size.height),
+      Offset(markerX, 0),
+      Offset(markerX, size.height),
       minutePaint,
     );
     if (marker.showLabel) {
@@ -188,24 +796,25 @@ void _paintTimeline({
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      labelPainter.paint(
-        canvas,
-        Offset(contentStartX + marker.left + 2, size.height - 24),
-      );
+      final labelX = (markerX + 2).clamp(contentStartX, contentEndX);
+      labelPainter.paint(canvas, Offset(labelX, size.height - 24));
     }
   }
 
   for (final block in renderData.blocks) {
-    final rect = Rect.fromLTWH(
-      block.left,
-      block.top,
-      block.width,
-      block.height,
+    final rectLeft = block.left.clamp(contentStartX, contentEndX);
+    final rectRight = (block.left + block.width).clamp(
+      contentStartX,
+      contentEndX,
     );
+    final rectWidth = (rectRight - rectLeft).clamp(0.0, maxX - contentStartX);
+    if (rectWidth <= 0) continue;
+
+    final rect = Rect.fromLTWH(rectLeft, block.top, rectWidth, block.height);
     final fillPaint = Paint()..color = block.color.withValues(alpha: 0.8);
     canvas.drawRect(rect, fillPaint);
 
-    if (block.durationMinutes != null && block.width > 18) {
+    if (block.durationMinutes != null && rectWidth > 18) {
       final int mins = block.durationMinutes!;
       final String durationText = mins >= 60
           ? "${mins ~/ 60}h ${mins % 60}m"
@@ -223,9 +832,9 @@ void _paintTimeline({
         textDirection: TextDirection.ltr,
       )..layout();
 
-      if (textPainter.width < block.width - 4) {
+      if (textPainter.width < rectWidth - 4) {
         final textOffset = Offset(
-          block.left + (block.width - textPainter.width) / 2,
+          rectLeft + (rectWidth - textPainter.width) / 2,
           block.top + (block.height - textPainter.height) / 2,
         );
         textPainter.paint(canvas, textOffset);
@@ -234,25 +843,33 @@ void _paintTimeline({
   }
 
   for (final line in renderData.crewLines) {
+    final rectLeft = line.left.clamp(contentStartX, contentEndX);
+    final rectRight = (line.left + line.width).clamp(
+      contentStartX,
+      contentEndX,
+    );
+    final rectWidth = (rectRight - rectLeft).clamp(0.0, maxX - contentStartX);
+    if (rectWidth <= 0) continue;
     canvas.drawRect(
-      Rect.fromLTWH(line.left, line.top, line.width, line.height),
+      Rect.fromLTWH(rectLeft, line.top, rectWidth, line.height),
       Paint()..color = Colors.indigo,
     );
   }
 
   canvas.drawLine(
     Offset(contentStartX, renderData.separatorY),
-    Offset(contentStartX + (24 * hourWidth), renderData.separatorY),
+    Offset(contentEndX, renderData.separatorY),
     separatorPaint,
   );
 
   for (final marker in renderData.placeMarkers) {
+    final markerX = marker.left.clamp(contentStartX, contentEndX);
     final markerLinePaint = Paint()
       ..color = Colors.redAccent.withValues(alpha: 0.75)
       ..strokeWidth = 0.8;
     canvas.drawLine(
-      Offset(marker.left, 0),
-      Offset(marker.left, size.height),
+      Offset(markerX, 0),
+      Offset(markerX, size.height),
       markerLinePaint,
     );
 
@@ -267,13 +884,13 @@ void _paintTimeline({
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    labelPainter.paint(canvas, Offset(marker.left + 6, marker.top + 14));
+    labelPainter.paint(canvas, Offset(markerX + 6, marker.top + 14));
 
     final iconPainter = marker.type == 0
         ? TahoInsertionPainter(color: marker.color)
         : TahoWithdrawalPainter(color: marker.color);
     canvas.save();
-    canvas.translate(marker.left + 6, marker.top);
+    canvas.translate(markerX + 6, marker.top);
     iconPainter.paint(canvas, const Size(8, 12));
     canvas.restore();
   }
@@ -281,18 +898,27 @@ void _paintTimeline({
   for (final marker in renderData.eventMarkers) {
     final lineTop = marker.top;
     final lineBottom = marker.top + 10;
+    final markerLeft = marker.left.clamp(contentStartX, contentEndX);
+    final markerRight = (marker.left + marker.width).clamp(
+      contentStartX,
+      contentEndX,
+    );
+    final markerWidth = (markerRight - markerLeft).clamp(
+      0.0,
+      maxX - contentStartX,
+    );
 
-    if (marker.width > 2) {
+    if (markerWidth > 2) {
       canvas.drawRect(
-        Rect.fromLTWH(marker.left, lineTop, marker.width, 2),
+        Rect.fromLTWH(markerLeft, lineTop, markerWidth, 2),
         Paint()
           ..color = marker.color.withValues(alpha: 0.7)
           ..strokeWidth = 2,
       );
     } else {
       canvas.drawLine(
-        Offset(marker.left, lineTop),
-        Offset(marker.left, lineBottom),
+        Offset(markerLeft, lineTop),
+        Offset(markerLeft, lineBottom),
         Paint()
           ..color = marker.color.withValues(alpha: 0.5)
           ..strokeWidth = 2,
@@ -301,7 +927,10 @@ void _paintTimeline({
 
     final iconPainter = IconPainter(color: marker.color);
     final iconSize = 20.0;
-    final iconLeft = (marker.left - 10).clamp(0.0, size.width - iconSize);
+    final iconLeft = (markerLeft - 10).clamp(
+      contentStartX,
+      contentEndX - iconSize,
+    );
     final iconTop = (lineBottom).clamp(0.0, size.height - iconSize);
     canvas.save();
     canvas.translate(iconLeft, iconTop);
@@ -459,6 +1088,10 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isManualZoom = false;
+  final Map<String, Uint8List> _periodPreviewImages = {};
+  final Set<String> _periodPreviewLoading = {};
+  final Map<String, String> _periodPreviewErrors = {};
+  String _periodPreviewScopeKey = '';
 
   @override
   void initState() {
@@ -475,6 +1108,88 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
     } else {
       _endDate = DateTime.now();
       _startDate = _endDate!.subtract(const Duration(days: 13));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ActivityTimeline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final days = _getFilteredRangeDays();
+        if (_viewMode == _ViewMode.period) {
+          _schedulePeriodPreviewGeneration(days);
+        }
+      });
+    }
+  }
+
+  String _buildPeriodPreviewScopeKey(List<DailyActivities> days) {
+    return days.map((day) => day.date.toIso8601String()).join('|');
+  }
+
+  String _buildPeriodPreviewImageKey(DailyActivities day) {
+    return '${day.date.toIso8601String()}-${widget.utcOffset}-${widget.under50km}-${widget.includeManualInSummary}';
+  }
+
+  void _schedulePeriodPreviewGeneration(List<DailyActivities> days) {
+    final scopeKey = _buildPeriodPreviewScopeKey(days);
+    if (_periodPreviewScopeKey == scopeKey) {
+      return;
+    }
+
+    _periodPreviewScopeKey = scopeKey;
+    _periodPreviewImages.clear();
+    _periodPreviewLoading.clear();
+    _periodPreviewErrors.clear();
+
+    for (final day in days) {
+      final key = _buildPeriodPreviewImageKey(day);
+      if (!_periodPreviewLoading.contains(key) &&
+          !_periodPreviewImages.containsKey(key)) {
+        _periodPreviewLoading.add(key);
+        unawaited(_loadPeriodPreviewImage(day, key));
+      }
+    }
+  }
+
+  Future<void> _loadPeriodPreviewImage(DailyActivities day, String key) async {
+    try {
+      final renderPayload = _buildTimelineRenderDataPayload(
+        day: day,
+        activities: widget.activities,
+        places: widget.places,
+        placesG2: widget.placesG2,
+        driverEvents: widget.driverEvents,
+        utcOffset: widget.utcOffset,
+        under50km: widget.under50km,
+        includeManualInSummary: widget.includeManualInSummary,
+        hourWidth: 100.0,
+        primaryGreenValue: Theme.of(context).primaryColor.value,
+      );
+
+      final bytes = await _renderTimelinePreviewImage(
+        payload: renderPayload,
+        primaryGreen: Theme.of(context).primaryColor,
+        targetWidth: 2400,
+        targetHeight: 220,
+        hourWidth: 100.0,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _periodPreviewImages[key] = bytes;
+        _periodPreviewLoading.remove(key);
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Period preview generation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() {
+        _periodPreviewErrors[key] = error.toString();
+        _periodPreviewLoading.remove(key);
+      });
     }
   }
 
@@ -606,6 +1321,14 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           160.0,
           min(200.0, maxTimelineHeight.clamp(160.0, 200.0)),
         );
+
+        final periodDays = _viewMode == _ViewMode.period
+            ? _getFilteredRangeDays()
+            : <DailyActivities>[];
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _viewMode != _ViewMode.period) return;
+          _schedulePeriodPreviewGeneration(periodDays);
+        });
 
         const double contentStartX = 0.0;
         final double availableWidth = timelineWidth - 32;
@@ -949,6 +1672,20 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                 ),
                 _buildSummaryContent(_calculateRangeSummary(), primaryGreen),
                 const SizedBox(height: 32),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    "Period Activity Statistics",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._buildPeriodPreviewCards(periodDays, primaryGreen),
+                const SizedBox(height: 24),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
@@ -1029,6 +1766,102 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         );
       },
     );
+  }
+
+  List<Widget> _buildPeriodPreviewCards(
+    List<DailyActivities> days,
+    Color primaryGreen,
+  ) {
+    if (days.isEmpty) return const [];
+
+    return days.map((day) {
+      final key = _buildPeriodPreviewImageKey(day);
+      final imageBytes = _periodPreviewImages[key];
+      final isLoading = _periodPreviewLoading.contains(key);
+      final error = _periodPreviewErrors[key];
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: primaryGreen.withValues(alpha: 0.12)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  day.date.toLocal().toString().split(' ').first,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (imageBytes != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      imageBytes,
+                      fit: BoxFit.fitWidth,
+                      alignment: Alignment.center,
+                      width: double.infinity,
+                      height: 160,
+                    ),
+                  )
+                else if (isLoading)
+                  SizedBox(
+                    height: 160,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: primaryGreen,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  )
+                else if (error != null)
+                  SizedBox(
+                    height: 160,
+                    child: Center(
+                      child: Text(
+                        'Preview unavailable',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: 160,
+                    child: Center(
+                      child: Text(
+                        'Preparing preview…',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   Widget _buildSummaryHeader(
@@ -2547,185 +3380,5 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       slot2LabelY: 45,
       slot1LabelY: 83,
     );
-  }
-
-  String _getCountryCode(int code) {
-    final String name;
-    switch (code) {
-      case 1:
-        name = "A";
-        break;
-      case 2:
-        name = "AL";
-        break;
-      case 3:
-        name = "AND";
-        break;
-      case 4:
-        name = "ARM";
-        break;
-      case 5:
-        name = "AZ";
-        break;
-      case 6:
-        name = "B";
-        break;
-      case 7:
-        name = "BG";
-        break;
-      case 8:
-        name = "BIH";
-        break;
-      case 9:
-        name = "BY";
-        break;
-      case 10:
-        name = "CH";
-        break;
-      case 11:
-        name = "CY";
-        break;
-      case 12:
-        name = "CZ";
-        break;
-      case 13:
-        name = "D";
-        break;
-      case 14:
-        name = "DK";
-        break;
-      case 15:
-        name = "E";
-        break;
-      case 16:
-        name = "EST";
-        break;
-      case 17:
-        name = "F";
-        break;
-      case 18:
-        name = "FIN";
-        break;
-      case 19:
-        name = "FL";
-        break;
-      case 20:
-        name = "FR, FO";
-        break;
-      case 21:
-        name = "UK";
-        break;
-      case 22:
-        name = "GE";
-        break;
-      case 23:
-        name = "GR";
-        break;
-      case 24:
-        name = "H";
-        break;
-      case 25:
-        name = "HR";
-        break;
-      case 26:
-        name = "I";
-        break;
-      case 27:
-        name = "IRL";
-        break;
-      case 28:
-        name = "IS";
-        break;
-      case 29:
-        name = "KZ";
-        break;
-      case 30:
-        name = "L";
-        break;
-      case 31:
-        name = "LT";
-        break;
-      case 32:
-        name = "LV";
-        break;
-      case 33:
-        name = "M";
-        break;
-      case 34:
-        name = "MC";
-        break;
-      case 35:
-        name = "MD";
-        break;
-      case 36:
-        name = "MK";
-        break;
-      case 37:
-        name = "N";
-        break;
-      case 38:
-        name = "NL";
-        break;
-      case 39:
-        name = "P";
-        break;
-      case 40:
-        name = "PL";
-        break;
-      case 41:
-        name = "RO";
-        break;
-      case 42:
-        name = "RSM";
-        break;
-      case 43:
-        name = "RUS";
-        break;
-      case 44:
-        name = "S";
-        break;
-      case 45:
-        name = "SK";
-        break;
-      case 46:
-        name = "SLO";
-        break;
-      case 47:
-        name = "TM";
-        break;
-      case 48:
-        name = "TR";
-        break;
-      case 49:
-        name = "UA";
-        break;
-      case 50:
-        name = "V";
-        break;
-      case 51:
-        name = "YU";
-        break;
-      case 52:
-        name = "MNE";
-        break;
-      case 53:
-        name = "SRB";
-        break;
-      case 54:
-        name = "UZ";
-        break;
-      case 253:
-        name = "EC";
-        break;
-      case 254:
-        name = "EUR";
-        break;
-      case 255:
-        name = "WLD";
-        break; // apparently UNK has same value as WLD
-      default:
-        return "Unknown ($code)";
-    }
-    return "$name";
   }
 }
