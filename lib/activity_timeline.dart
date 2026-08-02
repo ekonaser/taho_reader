@@ -884,7 +884,7 @@ void _paintTimeline({
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    labelPainter.paint(canvas, Offset(markerX + 6, marker.top + 14));
+    labelPainter.paint(canvas, Offset(markerX + 5, marker.top + 14));
 
     final iconPainter = marker.type == 0
         ? TahoInsertionPainter(color: marker.color)
@@ -1047,6 +1047,7 @@ class ActivityTimeline extends StatefulWidget {
   final bool isGen2View;
   final int initialViewMode;
   final Function(int)? onViewModeChanged;
+  final ValueChanged<DateTime>? onNavigateToDay;
 
   const ActivityTimeline({
     super.key,
@@ -1068,6 +1069,7 @@ class ActivityTimeline extends StatefulWidget {
     this.isGen2View = false,
     this.initialViewMode = 0,
     this.onViewModeChanged,
+    this.onNavigateToDay,
   });
 
   @override
@@ -1077,6 +1079,8 @@ class ActivityTimeline extends StatefulWidget {
 enum _ViewMode { daily, period, monthly }
 
 class _ActivityTimelineState extends State<ActivityTimeline> {
+  static const Duration _zoomFrameInterval = Duration(milliseconds: 33);
+  final ScrollController _contentScrollController = ScrollController();
   double _hourWidth = 120.0;
   double _baseHourWidth = 120.0;
   final ActivitySummary _summary = ActivitySummary();
@@ -1092,6 +1096,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
   final Set<String> _periodPreviewLoading = {};
   final Map<String, String> _periodPreviewErrors = {};
   String _periodPreviewScopeKey = '';
+  bool _isSummaryExportInProgress = false;
+  String _summaryExportStatus = 'Preparing export...';
+  DateTime? _lastZoomFrameAt;
+  Timer? _zoomFrameTimer;
+  double? _pendingZoomValue;
+  DateTime? _periodTapGlowDay;
 
   @override
   void initState() {
@@ -1109,6 +1119,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       _endDate = DateTime.now();
       _startDate = _endDate!.subtract(const Duration(days: 13));
     }
+
+    // Warm up period preview cards in the background so Period tab opens faster.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _preloadPeriodPreviews();
+    });
   }
 
   @override
@@ -1118,11 +1134,91 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final days = _getFilteredRangeDays();
+        _preloadPeriodPreviews(days: days);
         if (_viewMode == _ViewMode.period) {
           _schedulePeriodPreviewGeneration(days);
         }
       });
     }
+  }
+
+  void _preloadPeriodPreviews({List<DailyActivities>? days}) {
+    final targetDays = days ?? _getFilteredRangeDays();
+    if (targetDays.isEmpty) return;
+    _schedulePeriodPreviewGeneration(targetDays);
+  }
+
+  void _scheduleZoomFrame(double value) {
+    _pendingZoomValue = value;
+
+    final now = DateTime.now();
+    final lastFrameAt = _lastZoomFrameAt;
+    if (lastFrameAt == null ||
+        now.difference(lastFrameAt) >= _zoomFrameInterval) {
+      _flushZoomUpdate();
+      return;
+    }
+
+    final remaining = _zoomFrameInterval - now.difference(lastFrameAt);
+    if (_zoomFrameTimer?.isActive ?? false) {
+      return;
+    }
+
+    _zoomFrameTimer = Timer(remaining, _flushZoomUpdate);
+  }
+
+  void _flushZoomUpdate() {
+    final value = _pendingZoomValue;
+    if (!mounted || value == null) return;
+
+    _pendingZoomValue = null;
+    _lastZoomFrameAt = DateTime.now();
+    setState(() {
+      _isManualZoom = true;
+      _hourWidth = value;
+    });
+  }
+
+  void _flushZoomUpdateWithValue(double value) {
+    _pendingZoomValue = value;
+    _zoomFrameTimer?.cancel();
+    _flushZoomUpdate();
+  }
+
+  @override
+  void dispose() {
+    _zoomFrameTimer?.cancel();
+    _contentScrollController.dispose();
+    super.dispose();
+  }
+
+  bool _isSameDate(DateTime? a, DateTime b) {
+    if (a == null) return false;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Future<void> _handlePeriodCardTap(DailyActivities day) async {
+    final tappedDay = DateTime(day.date.year, day.date.month, day.date.day);
+    setState(() {
+      _periodTapGlowDay = tappedDay;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 140));
+    if (!mounted) return;
+
+    widget.onNavigateToDay?.call(tappedDay);
+
+    if (!mounted) return;
+    setState(() {
+      _viewMode = _ViewMode.daily;
+      _periodTapGlowDay = null;
+    });
+    widget.onViewModeChanged?.call(_viewMode.index);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_contentScrollController.hasClients) return;
+      _contentScrollController.jumpTo(0);
+    });
   }
 
   String _buildPeriodPreviewScopeKey(List<DailyActivities> days) {
@@ -1164,7 +1260,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
 
   Future<void> _loadPeriodPreviewImage(DailyActivities day, String key) async {
     try {
-      final renderPayload = _buildTimelineRenderDataPayload(
+      final renderPayload = await _buildTimelineRenderDataPayloadInIsolate(
         day: day,
         activities: widget.activities,
         places: widget.places,
@@ -1186,18 +1282,29 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       );
 
       if (!mounted) return;
-      setState(() {
+      // While user is on Daily/Monthly, avoid forcing rebuild on every loaded card.
+      if (_viewMode == _ViewMode.period) {
+        setState(() {
+          _periodPreviewImages[key] = bytes;
+          _periodPreviewLoading.remove(key);
+        });
+      } else {
         _periodPreviewImages[key] = bytes;
         _periodPreviewLoading.remove(key);
-      });
+      }
     } catch (error, stackTrace) {
       debugPrint('Period preview generation failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
-      setState(() {
+      if (_viewMode == _ViewMode.period) {
+        setState(() {
+          _periodPreviewErrors[key] = error.toString();
+          _periodPreviewLoading.remove(key);
+        });
+      } else {
         _periodPreviewErrors[key] = error.toString();
         _periodPreviewLoading.remove(key);
-      });
+      }
     }
   }
 
@@ -1215,72 +1322,133 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       vertical: 8,
     );
 
-    return Column(
+    return Stack(
       children: [
-        // Toggle Selector always visible
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: SegmentedButton<_ViewMode>(
-            segments: [
-              ButtonSegment(
-                value: _ViewMode.daily,
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Daily',
-                    style: TextStyle(fontSize: labelFontSize),
+        Column(
+          children: [
+            // Toggle Selector always visible
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: SegmentedButton<_ViewMode>(
+                segments: [
+                  ButtonSegment(
+                    value: _ViewMode.daily,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Daily',
+                        style: TextStyle(fontSize: labelFontSize),
+                      ),
+                    ),
+                    icon: const Icon(Icons.calendar_view_day),
+                  ),
+                  ButtonSegment(
+                    value: _ViewMode.period,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Period',
+                        style: TextStyle(fontSize: labelFontSize),
+                      ),
+                    ),
+                    icon: const Icon(Icons.date_range),
+                  ),
+                  ButtonSegment(
+                    value: _ViewMode.monthly,
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Monthly',
+                        style: TextStyle(fontSize: labelFontSize),
+                      ),
+                    ),
+                    icon: const Icon(Icons.calendar_month),
+                  ),
+                ],
+                selected: {_viewMode},
+                onSelectionChanged: (Set<_ViewMode> newSelection) {
+                  setState(() {
+                    _viewMode = newSelection.first;
+                  });
+                  widget.onViewModeChanged?.call(_viewMode.index);
+                },
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: primaryGreen,
+                  selectedForegroundColor: Colors.white,
+                  padding: segmentPadding,
+                ),
+              ),
+            ),
+            Expanded(
+              child: widget.activities.isEmpty
+                  ? Center(
+                      child: Text(
+                        "No activity data found.\nUpload a file or read a card.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                    )
+                  : _buildContent(day: _getCurrentDay()),
+            ),
+          ],
+        ),
+        if (_isSummaryExportInProgress)
+          Positioned.fill(
+            child: AbsorbPointer(
+              absorbing: true,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.35),
+                child: Center(
+                  child: Container(
+                    width: 280,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: primaryGreen,
+                          strokeWidth: 3,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          _summaryExportStatus,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Please wait until the report is ready.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                icon: const Icon(Icons.calendar_view_day),
               ),
-              ButtonSegment(
-                value: _ViewMode.period,
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Period',
-                    style: TextStyle(fontSize: labelFontSize),
-                  ),
-                ),
-                icon: const Icon(Icons.date_range),
-              ),
-              ButtonSegment(
-                value: _ViewMode.monthly,
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'Monthly',
-                    style: TextStyle(fontSize: labelFontSize),
-                  ),
-                ),
-                icon: const Icon(Icons.calendar_month),
-              ),
-            ],
-            selected: {_viewMode},
-            onSelectionChanged: (Set<_ViewMode> newSelection) {
-              setState(() {
-                _viewMode = newSelection.first;
-              });
-              widget.onViewModeChanged?.call(_viewMode.index);
-            },
-            style: SegmentedButton.styleFrom(
-              selectedBackgroundColor: primaryGreen,
-              selectedForegroundColor: Colors.white,
-              padding: segmentPadding,
             ),
           ),
-        ),
-        Expanded(
-          child: widget.activities.isEmpty
-              ? Center(
-                  child: Text(
-                    "No activity data found.\nUpload a file or read a card.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
-                )
-              : _buildContent(day: _getCurrentDay()),
-        ),
       ],
     );
   }
@@ -1374,8 +1542,15 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
           timelineHeight,
         );
 
+        final eventMarkersSignature = renderData.eventMarkers
+            .map(
+              (marker) =>
+                  '${marker.left.toStringAsFixed(2)}-${marker.width.toStringAsFixed(2)}',
+            )
+            .join('|');
+
         final timelineCacheKey =
-            '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}';
+            '${day.date.toIso8601String()}-${widget.utcOffset}-${effectiveHourWidth.toStringAsFixed(2)}-${pictureSize.width.toStringAsFixed(2)}-${pictureSize.height.toStringAsFixed(2)}-${renderData.blocks.length}-${renderData.placeMarkers.length}-${renderData.minuteMarkers.length}-${eventMarkersSignature}';
 
         if (_cachedTimelinePicture == null ||
             _cachedTimelineKey != timelineCacheKey ||
@@ -1400,6 +1575,7 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         }
 
         return SingleChildScrollView(
+          controller: _contentScrollController,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1555,11 +1731,9 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
                                 max: 500.0,
                                 activeColor: primaryGreen,
                                 onChanged: (value) {
-                                  setState(() {
-                                    _isManualZoom = true;
-                                    _hourWidth = value;
-                                  });
+                                  _scheduleZoomFrame(value);
                                 },
+                                onChangeEnd: _flushZoomUpdateWithValue,
                               ),
                             ),
                             Icon(
@@ -1787,84 +1961,110 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
       final imageBytes = _periodPreviewImages[key];
       final isLoading = _periodPreviewLoading.contains(key);
       final error = _periodPreviewErrors[key];
+      final isGlowing = _isSameDate(_periodTapGlowDay, day.date);
 
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _handlePeriodCardTap(day),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: primaryGreen.withValues(alpha: 0.12)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  day.date.toLocal().toString().split(' ').first,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isGlowing
+                      ? primaryGreen.withValues(alpha: 0.85)
+                      : primaryGreen.withValues(alpha: 0.12),
+                  width: isGlowing ? 1.6 : 1,
                 ),
-                const SizedBox(height: 8),
-                if (imageBytes != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(
-                      imageBytes,
-                      fit: BoxFit.fitWidth,
-                      alignment: Alignment.center,
-                      width: double.infinity,
-                      height: 160,
-                    ),
-                  )
-                else if (isLoading)
-                  SizedBox(
-                    height: 160,
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: primaryGreen,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  )
-                else if (error != null)
-                  SizedBox(
-                    height: 160,
-                    child: Center(
-                      child: Text(
-                        'Preview unavailable',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  SizedBox(
-                    height: 160,
-                    child: Center(
-                      child: Text(
-                        'Preparing preview…',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
-              ],
+                  if (isGlowing)
+                    BoxShadow(
+                      color: primaryGreen.withValues(alpha: 0.45),
+                      blurRadius: 22,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 0),
+                    ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      day.date.toLocal().toString().split(' ').first,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (imageBytes != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          imageBytes,
+                          fit: BoxFit.fitWidth,
+                          alignment: Alignment.center,
+                          width: double.infinity,
+                          height: 160,
+                        ),
+                      )
+                    else if (isLoading)
+                      SizedBox(
+                        height: 160,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: primaryGreen,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    else if (error != null)
+                      SizedBox(
+                        height: 160,
+                        child: Center(
+                          child: Text(
+                            'Preview unavailable',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        height: 160,
+                        child: Center(
+                          child: Text(
+                            'Preparing preview…',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -2542,23 +2742,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Share Summary PDF'),
               onTap: () async {
                 Navigator.pop(context);
-                final images = <DateTime, Uint8List>{};
-                for (var day in days) {
-                  final bytes = await _captureTimelineImage(day);
-                  images[day.date] = bytes;
-                }
-                TachoPdfGenerator.exportSummaryReport(
+                await _runSummaryExport(
                   days: days,
                   title: title,
                   rangeStr: rangeStr,
-                  primaryColor: primaryGreen,
-                  cardId: widget.cardId,
-                  allEvents: widget.driverEvents,
-                  utcOffset: widget.utcOffset,
-                  under50km: widget.under50km,
+                  primaryGreen: primaryGreen,
                   share: true,
-                  dailyTimelineImages: images,
-                  includeManualEntries: widget.includeManualInSummary,
                 );
               },
             ),
@@ -2567,23 +2756,12 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Open Summary PDF'),
               onTap: () async {
                 Navigator.pop(context);
-                final images = <DateTime, Uint8List>{};
-                for (var day in days) {
-                  final bytes = await _captureTimelineImage(day);
-                  images[day.date] = bytes;
-                }
-                TachoPdfGenerator.exportSummaryReport(
+                await _runSummaryExport(
                   days: days,
                   title: title,
                   rangeStr: rangeStr,
-                  primaryColor: primaryGreen,
-                  cardId: widget.cardId,
-                  allEvents: widget.driverEvents,
-                  utcOffset: widget.utcOffset,
-                  under50km: widget.under50km,
+                  primaryGreen: primaryGreen,
                   openImmediately: true,
-                  dailyTimelineImages: images,
-                  includeManualEntries: widget.includeManualInSummary,
                 );
               },
             ),
@@ -2592,23 +2770,11 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
               title: const Text('Save Summary PDF'),
               onTap: () async {
                 Navigator.pop(context);
-                final images = <DateTime, Uint8List>{};
-                for (var day in days) {
-                  final bytes = await _captureTimelineImage(day);
-                  images[day.date] = bytes;
-                }
-                TachoPdfGenerator.exportSummaryReport(
+                await _runSummaryExport(
                   days: days,
                   title: title,
                   rangeStr: rangeStr,
-                  primaryColor: primaryGreen,
-                  cardId: widget.cardId,
-                  allEvents: widget.driverEvents,
-                  utcOffset: widget.utcOffset,
-                  under50km: widget.under50km,
-                  openImmediately: false,
-                  dailyTimelineImages: images,
-                  includeManualEntries: widget.includeManualInSummary,
+                  primaryGreen: primaryGreen,
                 );
               },
             ),
@@ -2616,6 +2782,76 @@ class _ActivityTimelineState extends State<ActivityTimeline> {
         ),
       ),
     );
+  }
+
+  Future<void> _runSummaryExport({
+    required List<DailyActivities> days,
+    required String title,
+    required String rangeStr,
+    required Color primaryGreen,
+    bool share = false,
+    bool openImmediately = false,
+  }) async {
+    if (days.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No days available to export.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSummaryExportInProgress = true;
+      _summaryExportStatus = 'Preparing timeline previews...';
+    });
+
+    try {
+      final images = <DateTime, Uint8List>{};
+      final total = days.length;
+
+      for (var i = 0; i < total; i++) {
+        if (!mounted) return;
+        final day = days[i];
+        setState(() {
+          _summaryExportStatus =
+              'Preparing timeline previews... ${i + 1}/$total';
+        });
+
+        final bytes = await _captureTimelineImage(day);
+        images[day.date] = bytes;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _summaryExportStatus = 'Finalizing PDF report...';
+      });
+
+      await TachoPdfGenerator.exportSummaryReport(
+        days: days,
+        title: title,
+        rangeStr: rangeStr,
+        primaryColor: primaryGreen,
+        cardId: widget.cardId,
+        allEvents: widget.driverEvents,
+        utcOffset: widget.utcOffset,
+        under50km: widget.under50km,
+        share: share,
+        openImmediately: openImmediately,
+        dailyTimelineImages: images,
+        includeManualEntries: widget.includeManualInSummary,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to export summary PDF: $error')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isSummaryExportInProgress = false;
+        _summaryExportStatus = 'Preparing export...';
+      });
+    }
   }
 
   List<Widget> _buildActivityLog(DailyActivities day, Color primaryGreen) {

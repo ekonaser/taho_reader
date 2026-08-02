@@ -1103,6 +1103,16 @@ class _TahoDashboardState extends State<TahoDashboard> {
               vehicles: vehicles,
               vehiclesG2: vehiclesG2,
               isGen2View: _isGen2View,
+              onNavigateToDay: (date) {
+                setState(() {
+                  _selectedActivityDate = DateTime(
+                    date.year,
+                    date.month,
+                    date.day,
+                  );
+                  _activitiesSubTabIndex = 0; // Daily
+                });
+              },
               initialViewMode: _activitiesSubTabIndex,
               onViewModeChanged: (index) =>
                   setState(() => _activitiesSubTabIndex = index),
@@ -1121,6 +1131,7 @@ class _TahoDashboardState extends State<TahoDashboard> {
             setState(() {
               // Normalize to start of day to match Activities logic
               _selectedActivityDate = DateTime(date.year, date.month, date.day);
+              _activitiesSubTabIndex = 0; // Daily
               _selectedTabIndex = 2; // Activities Tab
             });
           },
@@ -1834,7 +1845,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
-          const ListTile(title: Text("Version"), trailing: Text("1.2.3")),
+          const ListTile(title: Text("Version"), trailing: Text("1.3.1")),
         ],
       ),
     );
