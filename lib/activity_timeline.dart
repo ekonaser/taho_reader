@@ -1114,6 +1114,7 @@ class _ActivityTimelineState extends State<ActivityTimeline>
   Timer? _zoomFrameTimer;
   double? _pendingZoomValue;
   DateTime? _periodTapGlowDay;
+  String? _lastActivitiesSignature;
 
   @override
   bool get wantKeepAlive => true;
@@ -1123,18 +1124,7 @@ class _ActivityTimelineState extends State<ActivityTimeline>
     super.initState();
     _viewMode = _ViewMode.values[widget.initialViewMode];
     _rebuildFlatCache();
-    if (widget.activities.isNotEmpty) {
-      _selectedMonth = DateTime(
-        widget.activities.first.date.year,
-        widget.activities.first.date.month,
-      );
-      // Default period: last 14 days or last available
-      _endDate = widget.activities.first.date;
-      _startDate = _endDate!.subtract(const Duration(days: 13));
-    } else {
-      _endDate = DateTime.now();
-      _startDate = _endDate!.subtract(const Duration(days: 13));
-    }
+    _syncDateDefaultsFromActivities(force: true);
 
     // Warm up period preview cards in the background so Period tab opens faster.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1149,6 +1139,7 @@ class _ActivityTimelineState extends State<ActivityTimeline>
 
     if (_didActivitiesChange(oldWidget)) {
       _rebuildFlatCache();
+      _syncDateDefaultsFromActivities();
     }
 
     // Invalidate daily render cache so it regenerates for changed inputs.
@@ -1174,6 +1165,103 @@ class _ActivityTimelineState extends State<ActivityTimeline>
   bool _didActivitiesChange(ActivityTimeline oldWidget) {
     return widget.activities != oldWidget.activities ||
         widget.activities.length != oldWidget.activities.length;
+  }
+
+  String _buildActivitiesSignature() {
+    if (widget.activities.isEmpty) return 'empty';
+    final newest = widget.activities.first.date;
+    final oldest = widget.activities.last.date;
+    return '${widget.activities.length}|${newest.toIso8601String()}|${oldest.toIso8601String()}';
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime _clampToActivityRange(DateTime value) {
+    if (widget.activities.isEmpty) return value;
+    final newest = widget.activities.first.date;
+    final oldest = widget.activities.last.date;
+    final dayValue = DateTime(value.year, value.month, value.day);
+    final newestDay = DateTime(newest.year, newest.month, newest.day);
+    final oldestDay = DateTime(oldest.year, oldest.month, oldest.day);
+    if (dayValue.isAfter(newestDay)) return newestDay;
+    if (dayValue.isBefore(oldestDay)) return oldestDay;
+    return dayValue;
+  }
+
+  bool _isSelectedMonthAvailable() {
+    return widget.activities.any(
+      (day) =>
+          day.date.year == _selectedMonth.year &&
+          day.date.month == _selectedMonth.month,
+    );
+  }
+
+  void _syncDateDefaultsFromActivities({bool force = false}) {
+    final signature = _buildActivitiesSignature();
+    if (!force && _lastActivitiesSignature == signature) {
+      return;
+    }
+    _lastActivitiesSignature = signature;
+
+    if (widget.activities.isEmpty) {
+      if (force) {
+        _endDate = DateTime.now();
+        _startDate = _endDate!.subtract(const Duration(days: 13));
+      }
+      return;
+    }
+
+    final latestDay = DateTime(
+      widget.activities.first.date.year,
+      widget.activities.first.date.month,
+      widget.activities.first.date.day,
+    );
+    final oldestDay = DateTime(
+      widget.activities.last.date.year,
+      widget.activities.last.date.month,
+      widget.activities.last.date.day,
+    );
+
+    // Monthly default: keep user choice if it still exists in dataset.
+    if (force || !_isSelectedMonthAvailable()) {
+      _selectedMonth = DateTime(latestDay.year, latestDay.month);
+    }
+
+    // Period default: keep user range if valid, otherwise reset to latest 14 days.
+    DateTime? normalizedStart = _startDate == null
+        ? null
+        : DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+    DateTime? normalizedEnd = _endDate == null
+        ? null
+        : DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
+
+    final hasRange = normalizedStart != null && normalizedEnd != null;
+    final isRangeOrderValid =
+        hasRange && (!normalizedStart!.isAfter(normalizedEnd!));
+    final isRangeInsideData =
+        hasRange &&
+        !normalizedStart!.isBefore(oldestDay) &&
+        !normalizedEnd!.isAfter(latestDay);
+
+    if (force || !isRangeOrderValid || !isRangeInsideData) {
+      final end = latestDay;
+      final candidateStart = end.subtract(const Duration(days: 13));
+      final start = candidateStart.isBefore(oldestDay)
+          ? oldestDay
+          : candidateStart;
+      _endDate = end;
+      _startDate = start;
+      return;
+    }
+
+    _startDate = _clampToActivityRange(normalizedStart!);
+    _endDate = _clampToActivityRange(normalizedEnd!);
+
+    if (_startDate!.isAfter(_endDate!)) {
+      _startDate = _endDate;
+    }
   }
 
   void _rebuildFlatCache() {
